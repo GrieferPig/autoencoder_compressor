@@ -2,10 +2,10 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader
 from tqdm import tqdm
 import random
 import matplotlib.pyplot as plt
+import os
 
 from DenoisingDataset import DenoisingDataset
 from DnCNN import DenoisingModel
