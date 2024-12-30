@@ -17,8 +17,6 @@ class DenoisingDataset(torch.utils.data.Dataset):
         indices,
         device=DEVICE,
     ):
-        indices = indices.tolist()
-
         self.indices = indices
         self.dataset = torch.utils.data.Subset(dataset, indices)
 
@@ -33,6 +31,7 @@ class DenoisingDataset(torch.utils.data.Dataset):
 
     def _preprocess_all_images(self, device, source_ae_model):
         preprocessed_images = []
+
         for idx in range(len(self.dataset)):
             example = self.dataset[idx]
             image = example["image"]
@@ -45,12 +44,6 @@ class DenoisingDataset(torch.utils.data.Dataset):
             if self.transform:
                 image = self.transform(image)
 
-            clean_img = torch.tensor(image.numpy())
-            preprocessed_images.append((image, clean_img))
-            if idx % 100 == 0:
-                print(f"Preprocessed {idx} / {len(self.dataset)} images")
-
-        preprocessed_images = torch.stack(preprocessed_images).to(device)
         # inference on source ae model to get residual
         source_ae_model.eval()
         with torch.no_grad():
@@ -66,13 +59,14 @@ class DenoisingDataset(torch.utils.data.Dataset):
 
             residual = torch.cat(residual, dim=0)
             noisy_images = torch.cat(noisy_images, dim=0)
-            self.preprocessed_data = (noisy_images, residual)
+            self.noisy_images = noisy_images
+            self.residual = residual
 
     def __len__(self):
         return len(self.preprocessed_data)
 
     def __getitem__(self, idx):
-        return self.preprocessed_data[idx]
+        return (self.noisy_images[idx], self.residual[idx])
 
 
 def init_denoising_dataset(dataset, source_ae_model, indices):
