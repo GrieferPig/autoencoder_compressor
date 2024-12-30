@@ -44,6 +44,7 @@ class DenoisingDataset(torch.utils.data.Dataset):
             if self.transform:
                 image = self.transform(image)
 
+        preprocessed_images.append(image)
         # inference on source ae model to get residual
         source_ae_model.eval()
         with torch.no_grad():
