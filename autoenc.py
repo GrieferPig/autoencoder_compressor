@@ -180,10 +180,13 @@ def plot_ae_model(
     )
 
     for i in range(NUM_SAMPLES):
-        original = originals[i]
-        reconstructed = reconstructeds[i]
+        original = originals[i].unsqueeze(0)
+        reconstructed = reconstructeds[i].unsqueeze(0)
 
         psnr, ssim_val = calculate_psnr_ssim(original, reconstructed)
+
+        original = original.squeeze()
+        reconstructed = reconstructed.squeeze()
 
         # Plot Original Image
         ax = plt.subplot(2, NUM_SAMPLES, i + 1)
@@ -198,6 +201,9 @@ def plot_ae_model(
         plt.imshow(img)
         ax.axis("off")
         ax.set_title("Reconstructed")
+
+    if not os.path.exists(SAVE_DIR_FIGURES):
+        os.makedirs(SAVE_DIR_FIGURES)
 
     plt.savefig(
         f"{SAVE_DIR_FIGURES}/recon_{ENC_LAYERS}_{IMG_SET_SIZE}_{LATENT_DIM}.png"
