@@ -67,6 +67,8 @@ def train_denoise_model(dataloader, save_dir=SAVE_DIR_DENOISE):
         # Optionally, save the model checkpoint
         if epoch % SAVE_PER_EPOCH_DENOISE == 0:
             checkpoint_path = f"{save_dir}/dncnn_epoch_{epoch}.pth"
+            if not os.path.exists(save_dir):
+                os.makedirs(save_dir)
             torch.save(model.state_dict(), checkpoint_path)
             print(f"Model checkpoint saved at {checkpoint_path}")
 

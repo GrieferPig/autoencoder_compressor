@@ -56,7 +56,7 @@ class DenoisingDataset(torch.utils.data.Dataset):
             batch_size = BATCH_SIZE_DENOISE_DATA_INFERENCE
             for i in range(0, len(preprocessed_images), batch_size):
                 batch = preprocessed_images[i : i + batch_size]
-                _, recon_batch = source_ae_model(batch)
+                recon_batch, _ = source_ae_model(batch)
                 residual.append(batch - recon_batch)
                 noisy_images.append(recon_batch)
 
