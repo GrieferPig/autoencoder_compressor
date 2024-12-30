@@ -46,7 +46,7 @@ def save_autoenc_model(
     torch.save(
         {
             "epoch": epoch,
-            "model_state_dict": model.state_dict(),
+            "model_state_dict": model,
             "loss": loss,
             "enc_layers": ENC_LAYERS,
             "img_set_size": IMG_SET_SIZE,

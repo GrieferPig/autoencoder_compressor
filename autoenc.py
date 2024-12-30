@@ -56,8 +56,7 @@ def train_ae_model(dataloader, ENC_LAYERS, IMG_SET_SIZE, LATENT_DIM, custom_data
         print(f"Epoch {epoch+1}, Loss: {avg_loss:.3f}")
 
         # Save the model checkpoint every SAVE_PER_EPOCH_DENOISE
-        # Skip the final epoch
-        if (epoch + 1) % SAVE_PER_EPOCH_AE == 0 and epoch != real_epoch - 1:
+        if (epoch + 1) % SAVE_PER_EPOCH_AE == 0:
             save_autoenc_model(
                 epoch,
                 avg_loss,
