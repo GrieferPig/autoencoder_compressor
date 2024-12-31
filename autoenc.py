@@ -19,6 +19,7 @@ def train_ae_model(
     LATENT_DIM,
     custom_dataset,
     epochs=EPOCHS_BASE_AE,
+    till_convergence=False,
 ):
     """
     Trains the Autoencoder model.
@@ -42,6 +43,15 @@ def train_ae_model(
     # Define optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=LR_AE)
 
+    if till_convergence:
+        # set a large number of epochs to train until convergence
+        epochs = 99999
+        # set to 1 to avoid division by zero
+        last_ssim = 1
+        ssim_not_improved_count = 0
+        # forcefully train 500 epochs before testing for convergence to avoid noise recon
+        patience = 500
+
     # Training loop
     model.train()
     with tqdm(range(epochs), unit="epoch") as tepochs:
@@ -52,13 +62,24 @@ def train_ae_model(
                 batch = batch.to(DEVICE)
                 optimizer.zero_grad()
                 recon_batch, _ = model(batch)
-                loss = 1 - ssim(batch, recon_batch, data_range=255, size_average=True)
+                loss = 1 - ssim(batch, recon_batch, data_range=1, size_average=True)
                 loss.backward()
                 optimizer.step()
                 epoch_loss += loss.item()
 
             avg_loss = epoch_loss / len(dataloader)
             tepochs.set_postfix(loss=f"{avg_loss*100:.4f} %")
+            if (epoch + 1) % 10 == 0 and till_convergence and epoch > patience:
+                # test the relative difference between the last ssim and the current one
+                # if avg_loss is within 1% of the last ssim, we consider the model converged
+                if abs(avg_loss - last_ssim) / last_ssim < 0.001:
+                    print(f"Converged at epoch {epoch+1}")
+                    ssim_not_improved_count += 1
+                else:
+                    ssim_not_improved_count = 0
+                last_ssim = avg_loss
+                if ssim_not_improved_count > 5:
+                    break
         # Save the model checkpoint every SAVE_PER_EPOCH_DENOISE
         if (epoch + 1) % SAVE_PER_EPOCH_AE == 0:
             save_autoenc_model(
@@ -83,6 +104,7 @@ def train_ae_model(
         LATENT_DIM,
         custom_dataset.indices,
         final=True,
+        convergence=till_convergence,
     )
 
     return model, avg_loss
@@ -90,7 +112,7 @@ def train_ae_model(
 
 def inference_ae_model(model, dataloader, num_examples=100):
     """
-    Evaluates the trained model on the dataset.
+    Evaluates the trained model on the dataset using MSE.
 
     Args:
         model (Autoencoder): Trained Autoencoder model.
@@ -98,42 +120,41 @@ def inference_ae_model(model, dataloader, num_examples=100):
         num_examples (int, optional): Number of examples to evaluate. Defaults to 100.
 
     Returns:
-        mean_similarity (float): Mean Cosine Similarity.
+        mean_mse (float): Mean MSE.
         avg_psnr (float): Average PSNR.
         avg_ssim (float): Average SSIM.
     """
     model.eval()
-    cos_sim_total = 0
-    count = 0
+    mse_total = 0
     avg_psnr = 0
     avg_ssim = 0
 
     with torch.no_grad():
+        eval_set = torch.zeros((num_examples, 3, ENC_IO_SIZE, ENC_IO_SIZE)).to(DEVICE)
         for batch in dataloader:
             batch = batch.to(DEVICE)
-            recon_batch, _ = model(batch)
-            batch_psnr, batch_ssim = calculate_psnr_ssim(batch, recon_batch)
-            avg_psnr += batch_psnr
-            avg_ssim += batch_ssim
-
-            for i in range(len(batch)):
-                original_flat = batch[i].view(-1).cpu().numpy().reshape(1, -1)
-                reconstructed_flat = (
-                    recon_batch[i].view(-1).cpu().numpy().reshape(1, -1)
-                )
-                similarity = cosine_similarity(original_flat, reconstructed_flat)[0][0]
-                cos_sim_total += similarity
-                count += 1
-                if count >= num_examples:
-                    break
-            if count >= num_examples:
+            eval_set = torch.cat((eval_set, batch), dim=0)
+            # fill the eval_set until it reaches num_examples
+            if len(eval_set) > num_examples:
+                eval_set = eval_set[:num_examples]
                 break
 
-    mean_similarity = cos_sim_total / num_examples
-    avg_psnr /= len(dataloader)
-    avg_ssim /= len(dataloader)
+        recon_batch, _ = model(eval_set)
+        batch_psnr, batch_ssim = calculate_psnr_ssim(eval_set, recon_batch)
+        avg_psnr += batch_psnr
+        avg_ssim += batch_ssim
 
-    return mean_similarity, avg_psnr, avg_ssim
+        for i in range(len(batch)):
+            original_flat = eval_set[i].view(-1).cpu().numpy()
+            reconstructed_flat = recon_batch[i].view(-1).cpu().numpy()
+            mse_val = ((original_flat - reconstructed_flat) ** 2).mean()
+            mse_total += mse_val
+
+    mean_mse = mse_total / num_examples
+    avg_psnr /= num_examples
+    avg_ssim /= num_examples
+
+    return mean_mse, avg_psnr, avg_ssim
 
 
 def plot_ae_model(

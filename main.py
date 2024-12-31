@@ -27,7 +27,7 @@ from utils import (
     load_autoenc_model,
     load_denoise_model,
 )
-from AEDataset import AEDataset
+from AEDataset import AEDataset, init_ae_dataset
 from DenoisingDataset import *
 from torch.utils.data import DataLoader
 import os
@@ -81,7 +81,7 @@ def main():
     parser.add_argument(
         "--indices",
         type=str,
-        default=None,
+        default="0,1,2,3",
         help="Comma-separated indices for inference",
     )
     parser.add_argument(
@@ -96,6 +96,12 @@ def main():
         default=None,
         help="Continue training from given epoch or final checkpoint",
     )
+    parser.add_argument(
+        "--convergence",
+        action="store_true",
+        help="Train AE model until convergence (SSIM improvement < 0.01 in last 50 epochs)",
+    )
+    parser.add_argument("--shuffle", action="store_true", help="Shuffle dataset")
 
     args = parser.parse_args()
     enc_config_str = None
@@ -139,14 +145,15 @@ def main():
                 f"Training AE with ENC_LAYERS={enc_layers}, IMG_SET_SIZE={img_set_size}, LATENT_DIM={latent_dim}, "
                 f"epochs={epochs}, plot={args.plot}"
             )
+            if args.convergence:
+                print("Actually, forget about the epochs, we train until convergence!")
 
             # Initialize base dataset
             base_dataset = load_dataset(DATASET_REPO, split=DATASET_SPLIT)
 
             # Initialize dataset and dataloader
-            dataset = AEDataset(dataset=base_dataset, length=img_set_size)
-            dataloader = DataLoader(
-                dataset, batch_size=BATCH_SIZE_AE_DATA, shuffle=True
+            dataset, dataloader = init_ae_dataset(
+                base_dataset, img_set_size, shuffle=args.shuffle
             )
 
             # Train the model
@@ -157,6 +164,7 @@ def main():
                 LATENT_DIM=latent_dim,
                 custom_dataset=dataset,
                 epochs=epochs,
+                till_convergence=args.convergence,
             )
 
             print(f"AE training completed. Final avg_loss: {avg_loss:.4f}")
@@ -219,7 +227,7 @@ def main():
                 sys.exit(1)
 
             dataloader = DataLoader(
-                dataset, batch_size=BATCH_SIZE_DENOISE_DATA, shuffle=True
+                dataset, batch_size=BATCH_SIZE_DENOISE_DATA, shuffle=args.shuffle
             )
 
             # Train the denoise model
@@ -261,11 +269,9 @@ def main():
             )
 
             # Initialize dataset and dataloader
-            dataset = AEDataset(
-                enc_layers=enc_layers, img_set_size=img_set_size, latent_dim=latent_dim
-            )
-            dataloader = DataLoader(
-                dataset, batch_size=BATCH_SIZE_AE_DATA, shuffle=False
+            base_dataset = load_dataset(DATASET_REPO, split=DATASET_SPLIT)
+            dataset, dataloader = init_ae_dataset(
+                base_dataset, img_set_size, indices=args.indices, shuffle=False
             )
 
             # Perform inference
@@ -303,10 +309,7 @@ def main():
                 )
                 dataset = DenoisingDatasetGaussian()
             elif method == "ae":
-                if args.indices is None:
-                    indices = [1, 2, 3, 4]
-                else:
-                    indices = args.indices.split(",")
+                indices = args.indices.split(",")
 
                 enc_layers, img_set_size, latent_dim = enc_config
                 if use_ae_config is None:
@@ -314,7 +317,7 @@ def main():
                     use_ae_config = enc_config
                 use_enc_layers, use_img_set_size, use_latent_dim = use_ae_config
                 # load the trained AE model
-                source_ae_model, _, (_, _, ae_indices) = load_autoenc_model(
+                source_ae_model, (_, _, ae_indices) = load_autoenc_model(
                     enc_layers=enc_layers,
                     img_set_size=img_set_size,
                     latent_dim=latent_dim,

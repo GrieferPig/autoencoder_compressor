@@ -19,6 +19,7 @@ def save_autoenc_model(
     indices,
     save_dir=SAVE_DIR_CKPT,
     final=False,
+    convergence=False,
 ):
     """
     Save the Autoencoder model checkpoint to a specified directory.
@@ -44,6 +45,8 @@ def save_autoenc_model(
     print(SAVE_DIR_CKPT)
 
     if final:
+        if convergence:
+            save_path = f"{save_dir}/final/ae_{ENC_LAYERS}_{IMG_SET_SIZE}_{LATENT_DIM}_convergence.pth"
         save_path = f"{save_dir}/final/ae_{ENC_LAYERS}_{IMG_SET_SIZE}_{LATENT_DIM}.pth"
     else:
         save_path = (

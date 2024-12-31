@@ -10,17 +10,6 @@ DATASET_SPLIT = "train"
 
 # Autoencoder settings
 # (num_layers, image_set_size, latent_dim)
-CUSTOM_TRAINING_CONFIG_SET = [
-    (2, 64, 16),
-    (2, 64, 32),
-    (2, 64, 64),
-    (2, 128, 16),
-    (2, 128, 32),
-    (2, 128, 64),
-    (2, 256, 16),
-    (2, 256, 32),
-    (2, 256, 64),
-]
 SAVE_DIR_CKPT = os.path.join(SAVE_DIR, "ckpt")
 SAVE_DIR_FIGURES = os.path.join(SAVE_DIR, "figures")
 ENC_IO_SIZE = 256
