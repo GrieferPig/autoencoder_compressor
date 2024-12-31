@@ -303,6 +303,12 @@ def main():
                 )
                 dataset = DenoisingDatasetGaussian()
             elif method == "ae":
+                if args.indices is None:
+                    # generate a random set of 4 indices
+                    indices = ",".join([str(i) for i in np.random.choice(1000, 4)])
+                else:
+                    indices = args.indices
+
                 enc_layers, img_set_size, latent_dim = enc_config
                 if use_ae_config is None:
                     # use the same config as the AE model
@@ -325,7 +331,7 @@ def main():
                 dataset = DenoisingDataset(
                     load_dataset(DATASET_REPO, split=DATASET_SPLIT),
                     source_ae_model,
-                    indices=args.indices,
+                    indices=indices,
                 )
             elif method == "oidn":
                 raise NotImplementedError("OIDN inference not implemented yet.")
