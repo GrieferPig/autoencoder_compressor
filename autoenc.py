@@ -8,7 +8,7 @@ from Autoencoder import Autoencoder
 from AEDataset import AEDataset
 from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
-from pytorch_msssim import ssim
+from pytorch_msssim import ssim, ms_ssim
 from tqdm import tqdm
 
 
@@ -62,7 +62,13 @@ def train_ae_model(
                 batch = batch.to(DEVICE)
                 optimizer.zero_grad()
                 recon_batch, _ = model(batch)
-                loss = 1 - ssim(batch, recon_batch, data_range=1, size_average=True)
+                loss = 1 - ssim(
+                    batch,
+                    recon_batch,
+                    data_range=1,
+                    size_average=True,
+                    nonnegative_ssim=True,
+                )
                 loss.backward()
                 optimizer.step()
                 epoch_loss += loss.item()
@@ -71,8 +77,7 @@ def train_ae_model(
             tepochs.set_postfix(loss=f"{avg_loss*100:.4f} %")
             if (epoch + 1) % 10 == 0 and till_convergence and epoch > patience:
                 # test the relative difference between the last ssim and the current one
-                # if avg_loss is within 1% of the last ssim, we consider the model converged
-                if abs(avg_loss - last_ssim) / last_ssim < 0.001:
+                if abs(avg_loss - last_ssim) < 1e-5:
                     print(f"Converged at epoch {epoch+1}")
                     ssim_not_improved_count += 1
                 else:
