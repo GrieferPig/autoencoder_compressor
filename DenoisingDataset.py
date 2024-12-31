@@ -47,6 +47,7 @@ class DenoisingDataset(torch.utils.data.Dataset):
             preprocessed_images.append(image)
 
         preprocessed_images = torch.stack(preprocessed_images).to(device)
+        self.preprocessed_images = preprocessed_images
         # inference on source ae model to get residual
         source_ae_model.eval()
         with torch.no_grad():
@@ -69,7 +70,11 @@ class DenoisingDataset(torch.utils.data.Dataset):
         return len(self.noisy_images)
 
     def __getitem__(self, idx):
-        return (self.noisy_images[idx], self.residual[idx])
+        return (
+            self.noisy_images[idx],
+            self.residual[idx],
+            self.preprocessed_images[idx],
+        )
 
 
 def init_denoising_dataset(dataset, source_ae_model, indices):
@@ -124,12 +129,17 @@ class DenoisingDatasetGaussian(torch.utils.data.Dataset):
         # generate gaussian noise
         self.residual = torch.randn_like(preprocessed_images)
         self.noisy_images = preprocessed_images + self.residual
+        self.preprocessed_images = preprocessed_images
 
     def __len__(self):
         return len(self.noisy_images)
 
     def __getitem__(self, idx):
-        return (self.noisy_images[idx], self.residual[idx])
+        return (
+            self.noisy_images[idx],
+            self.residual[idx],
+            self.preprocessed_images[idx],
+        )
 
 
 def init_denoising_dataset_gaussian(dataset, length):

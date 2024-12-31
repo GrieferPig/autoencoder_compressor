@@ -50,7 +50,7 @@ SAVE_DIR_COMPRESSION = os.path.join(SAVE_DIR, "compression")
 
 # Denoise dataset settings
 BATCH_SIZE_DENOISE_DATA_INFERENCE = 32
-BATCH_SIZE_DENOISE_DATA = 4
+BATCH_SIZE_DENOISE_DATA = 2
 
 # Autoencoder dataset settings
 BATCH_SIZE_AE_DATA = 64

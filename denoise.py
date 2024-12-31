@@ -58,7 +58,7 @@ def train_denoise_model(
     for epoch in range(1, epochs + 1):
         epoch_loss = 0.0
         progress_bar = tqdm(dataloader, desc=f"Epoch {epoch}/{epochs}", leave=False)
-        for noisy_imgs, residual in progress_bar:
+        for noisy_imgs, residual, _ in progress_bar:
             noisy_imgs = noisy_imgs.to(DEVICE)
             residual = residual.to(DEVICE)
 
@@ -183,13 +183,17 @@ def plot_denoise_results(
 
     with torch.no_grad():
         for i, idx in enumerate(examples):
-            noisy_img, clean_img = dataset[idx]
+            noisy_img, residual_img, clean_img = dataset[idx]
             noisy_img_tensor = noisy_img.unsqueeze(0).to(DEVICE)
             denoised_residual = model(noisy_img_tensor)
-            denoised_img = noisy_img_tensor - denoised_residual
+            denoised_img = noisy_img_tensor + denoised_residual
 
             denoised_img = denoised_img.squeeze(0).cpu()
             residual_img = denoised_residual.squeeze(0).cpu()
+            # normalize residual image
+            residual_img = (residual_img - residual_img.min()) / (
+                residual_img.max() - residual_img.min()
+            )
             noisy_img = noisy_img.cpu()
             clean_img = clean_img.cpu()
 
