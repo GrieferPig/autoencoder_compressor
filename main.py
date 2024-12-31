@@ -308,6 +308,13 @@ def main():
                     # use the same config as the AE model
                     use_ae_config = enc_config
                 use_enc_layers, use_img_set_size, use_latent_dim = use_ae_config
+                # load the trained AE model
+                source_ae_model, _ = load_autoenc_model(
+                    enc_layers=enc_layers,
+                    img_set_size=img_set_size,
+                    latent_dim=latent_dim,
+                    load_optimizer=False,
+                )
                 model = load_denoise_model(
                     gaussian_noise_model=False,
                     enc_layers=use_enc_layers,
@@ -316,10 +323,9 @@ def main():
                     load_optimizer=False,
                 )
                 dataset = DenoisingDataset(
-                    method="ae",
-                    enc_layers=enc_layers,
-                    img_set_size=img_set_size,
-                    latent_dim=latent_dim,
+                    load_dataset(DATASET_REPO, split=DATASET_SPLIT),
+                    source_ae_model,
+                    indices=args.indices,
                 )
             elif method == "oidn":
                 raise NotImplementedError("OIDN inference not implemented yet.")
