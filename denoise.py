@@ -28,6 +28,7 @@ def train_denoise_model(
     img_set_size=None,
     latent_dim=None,
     save_dir=SAVE_DIR_DENOISE_CKPT,
+    epochs=EPOCHS_DENOISE,
 ):
     """
     Trains the DnCNN denoising model.
@@ -54,11 +55,9 @@ def train_denoise_model(
 
     # Training Loop
     model.train()
-    for epoch in range(1, EPOCHS_DENOISE + 1):
+    for epoch in range(1, epochs + 1):
         epoch_loss = 0.0
-        progress_bar = tqdm(
-            dataloader, desc=f"Epoch {epoch}/{EPOCHS_DENOISE}", leave=False
-        )
+        progress_bar = tqdm(dataloader, desc=f"Epoch {epoch}/{epochs}", leave=False)
         for noisy_imgs, residual in progress_bar:
             noisy_imgs = noisy_imgs.to(DEVICE)
             residual = residual.to(DEVICE)
@@ -74,11 +73,19 @@ def train_denoise_model(
 
         avg_loss = epoch_loss / len(dataloader.dataset)
         training_losses.append(avg_loss)
-        print(f"Epoch [{epoch}/{EPOCHS_DENOISE}], Loss: {avg_loss:.6f}")
+        print(f"Epoch [{epoch}/{epochs}], Loss: {avg_loss:.6f}")
 
         if epoch % SAVE_PER_EPOCH_DENOISE == 0:
             save_denoise_model(
-                model, optimizer, epoch, avg_loss, save_dir, gaussian_noise_model
+                model,
+                optimizer,
+                epoch,
+                avg_loss,
+                save_dir,
+                gaussian_noise_model=gaussian_noise_model,
+                enc_layers=enc_layers,
+                img_set_size=img_set_size,
+                latent_dim=latent_dim,
             )
 
     return model, training_losses
@@ -207,5 +214,8 @@ def plot_denoise_results(
             ax.axis("off")
 
     plt.tight_layout()
+    if not os.path.exists(SAVE_DIR_DENOISE_FIGURES):
+        os.makedirs(SAVE_DIR_DENOISE_FIGURES)
+
     plt.savefig(figure_path)
     print(f"Results saved at: {figure_path}")

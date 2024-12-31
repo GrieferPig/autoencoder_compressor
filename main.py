@@ -222,6 +222,7 @@ def main():
                 img_set_size=enc_config[1] if method == "ae" else None,
                 latent_dim=enc_config[2] if method == "ae" else None,
                 save_dir=save_dir,
+                epochs=epochs,
             )
 
             print(f"Denoise training completed. Final loss: {training_losses[-1]:.4f}")
