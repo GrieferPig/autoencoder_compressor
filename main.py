@@ -304,11 +304,11 @@ def main():
                 dataset = DenoisingDatasetGaussian()
             elif method == "ae":
                 if args.indices is None:
-                    # generate a random set of 4 indices
-                    indices = ",".join([str(i) for i in np.random.choice(1000, 4)])
+                    indices = [1, 2, 3, 4]
                 else:
-                    indices = args.indices
+                    indices = args.indices.split(",")
 
+                print(indices)
                 enc_layers, img_set_size, latent_dim = enc_config
                 if use_ae_config is None:
                     # use the same config as the AE model
@@ -328,8 +328,9 @@ def main():
                     latent_dim=use_latent_dim,
                     load_optimizer=False,
                 )
+                base_dataset = load_dataset(DATASET_REPO, split=DATASET_SPLIT)
                 dataset = DenoisingDataset(
-                    load_dataset(DATASET_REPO, split=DATASET_SPLIT),
+                    base_dataset,
                     source_ae_model,
                     indices=indices,
                 )
@@ -346,7 +347,9 @@ def main():
             )
 
             # Perform inference
-            mse, psnr = inference_denoise_model(model, dataloader, num_examples=100)
+            mse, psnr = inference_denoise_model(
+                model, dataloader, num_examples=NUM_SAMPLES_DENOISE
+            )
             print(f"Denoise Inference Results - MSE: {mse:.4f}, PSNR: {psnr:.4f}")
 
             if args.plot:

@@ -111,7 +111,7 @@ def inference_denoise_model(model, dataloader, num_examples=100):
     count = 0
 
     with torch.no_grad():
-        for noisy_imgs, clean_imgs in dataloader:
+        for noisy_imgs, _, clean_imgs in dataloader:
             noisy_imgs = noisy_imgs.to(DEVICE)
             clean_imgs = clean_imgs.to(DEVICE)
 
