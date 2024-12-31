@@ -80,7 +80,66 @@ def init_denoising_dataset(dataset, source_ae_model, indices):
     )
 
     dataloader = torch.utils.data.DataLoader(
-        denoising_dataset, batch_size=BATCH_SIZE_DENOISE_DATA, shuffle=True
+        denoising_dataset, batch_size=BATCH_SIZE_DENOISE_DATA
+    )
+
+    return denoising_dataset, dataloader
+
+
+class DenoisingDatasetGaussian(torch.utils.data.Dataset):
+    def __init__(
+        self,
+        dataset,
+        device=DEVICE,
+        length=1000,
+    ):
+        self.dataset = torch.utils.data.Subset(dataset, list(range(length)))
+        self.transform = transforms.Compose(
+            [
+                transforms.Resize((ENC_IO_SIZE, ENC_IO_SIZE)),
+                transforms.ToTensor(),
+            ]
+        )
+
+        self._preprocess_all_images(device)
+
+    def _preprocess_all_images(self, device):
+        preprocessed_images = []
+
+        for idx in range(len(self.dataset)):
+            example = self.dataset[idx]
+            image = example["image"]
+
+            # Ensure the image is in RGB format
+            if image.mode != "RGB":
+                image = image.convert("RGB")
+
+            # Apply the transformations
+            if self.transform:
+                image = self.transform(image)
+
+            preprocessed_images.append(image)
+
+        preprocessed_images = torch.stack(preprocessed_images).to(device)
+        # generate gaussian noise
+        self.residual = torch.randn_like(preprocessed_images)
+        self.noisy_images = preprocessed_images + self.residual
+
+    def __len__(self):
+        return len(self.noisy_images)
+
+    def __getitem__(self, idx):
+        return (self.noisy_images[idx], self.residual[idx])
+
+
+def init_denoising_dataset_gaussian(dataset, length):
+    denoising_dataset = DenoisingDataset(
+        dataset=dataset,
+        length=length,
+    )
+
+    dataloader = torch.utils.data.DataLoader(
+        denoising_dataset, batch_size=BATCH_SIZE_DENOISE_DATA
     )
 
     return denoising_dataset, dataloader

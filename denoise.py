@@ -14,12 +14,21 @@ from config import (
     SAVE_PER_EPOCH_DENOISE,
     LR_DENOISE,
     EPOCHS_DENOISE,
-    SAVE_DIR_DENOISE,
+    SAVE_DIR_DENOISE_CKPT,
+    SAVE_DIR_DENOISE_FIGURES,
     NUM_SAMPLES_DENOISE,
 )
+from utils import save_denoise_model
 
 
-def train_denoise_model(dataloader, save_dir=SAVE_DIR_DENOISE):
+def train_denoise_model(
+    dataloader,
+    gaussian_noise_model=True,
+    enc_layers=None,
+    img_set_size=None,
+    latent_dim=None,
+    save_dir=SAVE_DIR_DENOISE_CKPT,
+):
     """
     Trains the DnCNN denoising model.
 
@@ -31,6 +40,9 @@ def train_denoise_model(dataloader, save_dir=SAVE_DIR_DENOISE):
         model (DenoisingModel): Trained DnCNN model.
         training_losses (list): List of average losses per epoch.
     """
+    if not (gaussian_noise_model or (enc_layers and img_set_size and latent_dim)):
+        raise ValueError("Please provide valid model configuration.")
+
     # Initialize the DnCNN model
     model = DenoisingModel().to(DEVICE)
 
@@ -64,13 +76,8 @@ def train_denoise_model(dataloader, save_dir=SAVE_DIR_DENOISE):
         training_losses.append(avg_loss)
         print(f"Epoch [{epoch}/{EPOCHS_DENOISE}], Loss: {avg_loss:.6f}")
 
-        # Optionally, save the model checkpoint
         if epoch % SAVE_PER_EPOCH_DENOISE == 0:
-            checkpoint_path = f"{save_dir}/dncnn_epoch_{epoch}.pth"
-            if not os.path.exists(save_dir):
-                os.makedirs(save_dir)
-            torch.save(model.state_dict(), checkpoint_path)
-            print(f"Model checkpoint saved at {checkpoint_path}")
+            save_denoise_model(epoch, avg_loss, model, optimizer, save_dir)
 
     return model, training_losses
 
@@ -129,21 +136,41 @@ def inference_denoise_model(model, dataloader, num_examples=100):
     return avg_mse, avg_psnr
 
 
-def plot_denoise_results(model, dataset, num_samples=NUM_SAMPLES_DENOISE):
+def plot_denoise_results(
+    model,
+    dataset,
+    gaussian_noise_model=True,
+    enc_layers=None,
+    img_set_size=None,
+    latent_dim=None,
+    num_samples=NUM_SAMPLES_DENOISE,
+):
     """
-    Plots noisy, denoised, and clean images for visual comparison.
+    Plots noisy, denoised, residual, and clean images for visual comparison.
 
     Args:
         model (DenoisingModel): Trained DnCNN model.
         dataset (DenoisingDataset): The dataset object.
         num_samples (int, optional): Number of samples to plot. Defaults to NUM_SAMPLES_DENOISE.
     """
+    if gaussian_noise_model:
+        figure_path = os.path.join(
+            SAVE_DIR_DENOISE_FIGURES, "denoise_results_gaussian.png"
+        )
+    elif enc_layers and img_set_size and latent_dim:
+        figure_path = os.path.join(
+            SAVE_DIR_DENOISE_FIGURES,
+            f"denoise_results_{enc_layers}_{img_set_size}_{latent_dim}.png",
+        )
+    else:
+        raise ValueError("Please provide valid model configuration.")
+
     model.eval()
     examples = random.sample(range(len(dataset)), num_samples)
 
-    fig, axes = plt.subplots(num_samples, 3, figsize=(15, 5 * num_samples))
+    fig, axes = plt.subplots(num_samples, 4, figsize=(20, 5 * num_samples))
     if num_samples == 1:
-        axes = [axes]  # Ensure axes is iterable
+        axes = [axes]
 
     with torch.no_grad():
         for i, idx in enumerate(examples):
@@ -151,48 +178,32 @@ def plot_denoise_results(model, dataset, num_samples=NUM_SAMPLES_DENOISE):
             noisy_img_tensor = noisy_img.unsqueeze(0).to(DEVICE)
             denoised_residual = model(noisy_img_tensor)
             denoised_img = noisy_img_tensor - denoised_residual
-            denoised_img = denoised_img.squeeze(0).cpu()
 
+            denoised_img = denoised_img.squeeze(0).cpu()
+            residual_img = denoised_residual.squeeze(0).cpu()
             noisy_img = noisy_img.cpu()
             clean_img = clean_img.cpu()
 
-            # Plot Noisy Image
-            ax = axes[i][0] if num_samples > 1 else axes[0]
+            ax = axes[i][0]
             ax.imshow(noisy_img.permute(1, 2, 0).numpy())
             ax.set_title("Noisy Image")
             ax.axis("off")
 
-            # Plot Denoised Image
-            ax = axes[i][1] if num_samples > 1 else axes[1]
+            ax = axes[i][1]
             ax.imshow(denoised_img.permute(1, 2, 0).numpy())
             ax.set_title("Denoised Image")
             ax.axis("off")
 
-            # Plot Clean Image
-            ax = axes[i][2] if num_samples > 1 else axes[2]
+            ax = axes[i][2]
+            ax.imshow(residual_img.permute(1, 2, 0).numpy())
+            ax.set_title("Residual")
+            ax.axis("off")
+
+            ax = axes[i][3]
             ax.imshow(clean_img.permute(1, 2, 0).numpy())
             ax.set_title("Clean Image")
             ax.axis("off")
 
     plt.tight_layout()
-    plt.show()
-
-
-# Example Usage
-# if __name__ == "__main__":
-#     # Initialize dataset and dataloader
-#     denoising_dataset = DenoisingDataset(...)  # Provide necessary arguments
-#     dataloader = DataLoader(
-#         denoising_dataset, batch_size=32, shuffle=True, num_workers=4
-#     )
-
-#     # Train the model
-#     trained_model, losses = train_denoise_model(dataloader)
-
-#     # Perform inference
-#     avg_mse, avg_psnr = inference_denoise_model(
-#         trained_model, dataloader, num_examples=100
-#     )
-
-#     # Plot the results
-#     plot_denoise_results(trained_model, denoising_dataset, num_samples=5)
+    plt.savefig(figure_path)
+    print(f"Results saved at: {figure_path}")

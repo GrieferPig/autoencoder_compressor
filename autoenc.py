@@ -9,9 +9,17 @@ from AEDataset import AEDataset
 from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 from pytorch_msssim import ssim
+from tqdm import tqdm
 
 
-def train_ae_model(dataloader, ENC_LAYERS, IMG_SET_SIZE, LATENT_DIM, custom_dataset):
+def train_ae_model(
+    dataloader,
+    ENC_LAYERS,
+    IMG_SET_SIZE,
+    LATENT_DIM,
+    custom_dataset,
+    epochs=EPOCHS_BASE_AE,
+):
     """
     Trains the Autoencoder model.
 
@@ -34,50 +42,46 @@ def train_ae_model(dataloader, ENC_LAYERS, IMG_SET_SIZE, LATENT_DIM, custom_data
     # Define optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=LR_AE)
 
-    # Calculate the number of epochs based on dataset size and encoder layers
-    real_epoch = int(
-        EPOCHS_BASE_AE * max(1, IMG_SET_SIZE / 64) * max(1, ENC_LAYERS - 1)
-    )
-    print(f"Real Epoch: {real_epoch}")
-
     # Training loop
     model.train()
-    for epoch in range(real_epoch):
-        epoch_loss = 0
-        for batch in dataloader:
-            batch = batch.to(DEVICE)
-            optimizer.zero_grad()
-            recon_batch, _ = model(batch)
-            loss = 1 - ssim(batch, recon_batch, data_range=255, size_average=True)
-            loss.backward()
-            optimizer.step()
-            epoch_loss += loss.item()
-        avg_loss = epoch_loss / len(dataloader)
-        print(f"Epoch {epoch+1}, Loss: {avg_loss:.3f}")
+    with tqdm(range(epochs), unit="epoch") as tepochs:
+        for epoch in tepochs:
+            epoch_loss = 0
+            tepochs.set_description(f"Epoch {epoch+1}")
+            for batch in dataloader:
+                batch = batch.to(DEVICE)
+                optimizer.zero_grad()
+                recon_batch, _ = model(batch)
+                loss = 1 - ssim(batch, recon_batch, data_range=255, size_average=True)
+                loss.backward()
+                optimizer.step()
+                epoch_loss += loss.item()
 
+            avg_loss = epoch_loss / len(dataloader)
+            tepochs.set_postfix(loss=f"{avg_loss*100:.4f} %")
         # Save the model checkpoint every SAVE_PER_EPOCH_DENOISE
         if (epoch + 1) % SAVE_PER_EPOCH_AE == 0:
             save_autoenc_model(
-                epoch,
+                epoch + 1,
                 avg_loss,
                 model.state_dict(),
+                optimizer.state_dict(),
                 ENC_LAYERS,
                 IMG_SET_SIZE,
                 LATENT_DIM,
                 custom_dataset.indices,
-                save_dir=SAVE_DIR,
             )
 
     # Save the trained model
     save_autoenc_model(
-        real_epoch,
+        epochs,
         avg_loss,
         model.state_dict(),
+        optimizer.state_dict(),
         ENC_LAYERS,
         IMG_SET_SIZE,
         LATENT_DIM,
         custom_dataset.indices,
-        save_dir=SAVE_DIR,
         final=True,
     )
 
@@ -217,33 +221,3 @@ def plot_ae_model(
         f"Final Loss: {avg_loss:.4f}, Mean Cosine Similarity: {mean_similarity:.4f}, "
         f"Avg PSNR: {avg_psnr:.4f}, Avg SSIM: {avg_ssim:.4f}"
     )
-
-
-# Example Usage
-# if __name__ == "__main__":
-#     # Initialize dataset and dataloader
-#     custom_dataset = AEDataset(...)
-#     dataloader = DataLoader(custom_dataset, batch_size=BATCH_SIZE, shuffle=True)
-
-#     # Train the model
-#     model, avg_loss = train_ae_model(
-#         dataloader, ENC_LAYERS, IMG_SET_SIZE, LATENT_DIM, custom_dataset
-#     )
-
-#     # Perform inference
-#     mean_similarity, avg_psnr, avg_ssim = inference_ae_model(
-#         model, dataloader, num_examples=100
-#     )
-
-#     # Plot the results
-#     plot_ae_model(
-#         model,
-#         custom_dataset,
-#         ENC_LAYERS,
-#         IMG_SET_SIZE,
-#         LATENT_DIM,
-#         avg_loss,
-#         mean_similarity,
-#         avg_psnr,
-#         avg_ssim,
-#     )

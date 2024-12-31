@@ -4,6 +4,10 @@ import os
 # Default save directory
 SAVE_DIR = "./results"
 
+# Dataset configuration
+DATASET_REPO = "GATE-engine/mini_imagenet"
+DATASET_SPLIT = "train"
+
 # Autoencoder settings
 # (num_layers, image_set_size, latent_dim)
 CUSTOM_TRAINING_CONFIG_SET = [
@@ -27,7 +31,10 @@ NUM_SAMPLES = 4
 SAVE_PER_EPOCH_AE = 1000
 
 # Denoise settings
-SAVE_DIR_DENOISE = os.path.join(SAVE_DIR, "denoise")
+SAVE_DIR_DENOISE_BASE = os.path.join(SAVE_DIR, "denoise")
+SAVE_DIR_DENOISE_CKPT = os.path.join(SAVE_DIR_DENOISE_BASE, "ckpt")
+SAVE_DIR_DENOISE_FIGURES = os.path.join(SAVE_DIR_DENOISE_BASE, "figures")
+SAVE_FILENAME_GAUSSIAN = "dncnn_gaussian.pth"
 LR_DENOISE = 1e-4
 EPOCHS_DENOISE = 100
 SAVE_PER_EPOCH_DENOISE = 10
