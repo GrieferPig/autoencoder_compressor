@@ -308,19 +308,20 @@ def main():
                 else:
                     indices = args.indices.split(",")
 
-                print(indices)
                 enc_layers, img_set_size, latent_dim = enc_config
                 if use_ae_config is None:
                     # use the same config as the AE model
                     use_ae_config = enc_config
                 use_enc_layers, use_img_set_size, use_latent_dim = use_ae_config
                 # load the trained AE model
-                source_ae_model, _ = load_autoenc_model(
+                source_ae_model, _, (_, _, ae_indices) = load_autoenc_model(
                     enc_layers=enc_layers,
                     img_set_size=img_set_size,
                     latent_dim=latent_dim,
                     load_optimizer=False,
                 )
+                # Use indices to index ae_indices
+                indices = [ae_indices[int(i)] for i in indices]
                 model = load_denoise_model(
                     gaussian_noise_model=False,
                     enc_layers=use_enc_layers,
@@ -328,6 +329,7 @@ def main():
                     latent_dim=use_latent_dim,
                     load_optimizer=False,
                 )
+
                 base_dataset = load_dataset(DATASET_REPO, split=DATASET_SPLIT)
                 dataset = DenoisingDataset(
                     base_dataset,
