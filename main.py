@@ -23,6 +23,7 @@ from denoise import (
     plot_denoise_results,
 )
 from utils import (
+    get_model_size,
     load_autoenc_model,
     load_denoise_model,
 )
@@ -45,7 +46,9 @@ def main():
         prog="main.py",
         description="Train/Inference for AE or Denoise with optional configs.",
     )
-    parser.add_argument("subcommand", choices=["train", "inference"], help="Subcommand")
+    parser.add_argument(
+        "subcommand", choices=["train", "inference", "getsize"], help="Subcommand"
+    )
     parser.add_argument(
         "model_type", choices=["ae", "denoise"], help="Model type: ae or denoise"
     )
@@ -336,6 +339,41 @@ def main():
                     img_set_size=enc_config[1] if method == "ae" else None,
                     latent_dim=enc_config[2] if method == "ae" else None,
                 )
+
+    elif args.subcommand == "getsize":
+        # get model size on disk
+        if args.model_type == "ae":
+            enc_layers, img_set_size, latent_dim = enc_config
+            model, _ = load_autoenc_model(
+                enc_layers=enc_layers,
+                img_set_size=img_set_size,
+                latent_dim=latent_dim,
+                load_optimizer=False,
+            )
+            model_size = get_model_size(model)
+        elif args.model_type == "denoise":
+            if method == "gaussian":
+                model = load_denoise_model(
+                    gaussian_noise_model=True, load_optimizer=False
+                )
+            elif method == "ae":
+                enc_layers, img_set_size, latent_dim = enc_config
+                model = load_denoise_model(
+                    gaussian_noise_model=False,
+                    enc_layers=enc_layers,
+                    img_set_size=img_set_size,
+                    latent_dim=latent_dim,
+                    load_optimizer=False,
+                )
+            elif method == "oidn":
+                raise NotImplementedError("OIDN inference not implemented yet.")
+            else:
+                print(
+                    "Invalid denoise method. Choose from 'gaussian', 'ae', or 'oidn'."
+                )
+                sys.exit(1)
+
+        print(f"AE model size: {model_size:.4f} MB")
 
 
 if __name__ == "__main__":

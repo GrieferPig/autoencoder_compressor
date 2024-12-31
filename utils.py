@@ -235,10 +235,10 @@ def get_model_size(model):
 
     file_size_mib = file_size_bytes / (1024**2)  # MiB
 
-    print(f"Checkpoint Size: {file_size_bytes} bytes, {file_size_mib:.2f} MiB")
-
     # Remove the temporary file
     os.remove(checkpoint_path)
+
+    return file_size_mib
 
 
 # def run_automated_experiments():
