@@ -108,7 +108,7 @@ def save_denoise_model(
     optimizer,
     epoch,
     loss,
-    save_dir=SAVE_DIR_CKPT,
+    save_dir=SAVE_DIR_DENOISE_CKPT,
     gaussian_noise_model=True,
     enc_layers=None,
     img_set_size=None,
@@ -127,14 +127,14 @@ def save_denoise_model(
     Returns:
     - None
     """
-    if not os.path.exists(f"{save_dir}/ckpt"):
-        os.makedirs(f"{save_dir}/ckpt")
+    if not os.path.exists(f"{save_dir}"):
+        os.makedirs(f"{save_dir}")
 
     if gaussian_noise_model:
-        save_path = f"{save_dir}/ckpt/{SAVE_FILENAME_GAUSSIAN}"
+        save_path = f"{save_dir}/{SAVE_FILENAME_GAUSSIAN}"
     elif enc_layers and img_set_size and latent_dim:
         save_path = (
-            f"{save_dir}/ckpt/dncnn_final_{enc_layers}_{img_set_size}_{latent_dim}.pth"
+            f"{save_dir}/dncnn_final_{enc_layers}_{img_set_size}_{latent_dim}.pth"
         )
 
     torch.save(
@@ -161,11 +161,9 @@ def load_denoise_model(
     load_optimizer=False,
 ):
     if gaussian_noise_model:
-        checkpoint_path = f"{SAVE_DIR_CKPT}/{SAVE_FILENAME_GAUSSIAN}"
+        checkpoint_path = f"{SAVE_DIR_DENOISE_CKPT}/{SAVE_FILENAME_GAUSSIAN}"
     elif enc_layers and img_set_size and latent_dim:
-        checkpoint_path = (
-            f"{SAVE_DIR_CKPT}/dncnn_final_{enc_layers}_{img_set_size}_{latent_dim}.pth"
-        )
+        checkpoint_path = f"{SAVE_DIR_DENOISE_CKPT}/dncnn_final_{enc_layers}_{img_set_size}_{latent_dim}.pth"
     else:
         raise ValueError("Please provide valid model configuration.")
 

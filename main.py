@@ -90,6 +90,12 @@ def main():
         default=None,
         help="Comma-separated enc config to use for AE-based denoising",
     )
+    parser.add_argument(
+        "--continue",
+        type=str,
+        default=None,
+        help="Continue training from given epoch or final checkpoint",
+    )
 
     args = parser.parse_args()
     enc_config_str = None
@@ -172,7 +178,6 @@ def main():
                     avg_ssim=avg_ssim,
                 )
         else:  # denoise
-            save_dir = SAVE_DIR_DENOISE_CKPT
             if method == "gaussian":
                 print(
                     f"Training Denoise with method='gaussian', epochs={epochs}, img_set_size={args.img_set_size}"
@@ -224,7 +229,6 @@ def main():
                 enc_layers=enc_config[0] if method == "ae" else None,
                 img_set_size=enc_config[1] if method == "ae" else None,
                 latent_dim=enc_config[2] if method == "ae" else None,
-                save_dir=save_dir,
                 epochs=epochs,
             )
 
