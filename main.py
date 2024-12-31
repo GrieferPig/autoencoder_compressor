@@ -304,12 +304,15 @@ def main():
                 dataset = DenoisingDatasetGaussian()
             elif method == "ae":
                 enc_layers, img_set_size, latent_dim = enc_config
+                if use_ae_config is None:
+                    # use the same config as the AE model
+                    use_ae_config = enc_config
                 use_enc_layers, use_img_set_size, use_latent_dim = use_ae_config
                 model = load_denoise_model(
                     gaussian_noise_model=False,
-                    enc_layers=enc_layers,
-                    img_set_size=img_set_size,
-                    latent_dim=latent_dim,
+                    enc_layers=use_enc_layers,
+                    img_set_size=use_img_set_size,
+                    latent_dim=use_latent_dim,
                     load_optimizer=False,
                 )
                 dataset = DenoisingDataset(
