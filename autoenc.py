@@ -81,9 +81,11 @@ def train_ae_model(
                     print(f"Converged at epoch {epoch+1}")
                     ssim_not_improved_count += 1
                 else:
-                    ssim_not_improved_count = 0
+                    ssim_not_improved_count -= 1
+                    if ssim_not_improved_count < 0:
+                        ssim_not_improved_count = 0
                 last_ssim = avg_loss
-                if ssim_not_improved_count > 5:
+                if ssim_not_improved_count > 10:
                     break
         # Save the model checkpoint every SAVE_PER_EPOCH_DENOISE
         if (epoch + 1) % SAVE_PER_EPOCH_AE == 0:
