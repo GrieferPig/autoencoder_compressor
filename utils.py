@@ -85,11 +85,12 @@ def load_autoenc_model(enc_layers, img_set_size, latent_dim, load_optimizer=Fals
     print(f"Loading autoencoder model from {checkpoint_path}")
     checkpoint = torch.load(checkpoint_path)
     model = Autoencoder(
-        image_size=checkpoint["img_set_size"],
+        image_size=ENC_IO_SIZE,
         num_layers=checkpoint["enc_layers"],
         latent_dim=checkpoint["latent_dim"],
     )
     model.load_state_dict(checkpoint["model_state_dict"])
+    model = model.to(DEVICE)
     if load_optimizer:
         optimizer = torch.optim.Adam(model.parameters(), lr=LR_AE)
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])

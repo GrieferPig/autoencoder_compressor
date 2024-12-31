@@ -77,7 +77,9 @@ def train_denoise_model(
         print(f"Epoch [{epoch}/{EPOCHS_DENOISE}], Loss: {avg_loss:.6f}")
 
         if epoch % SAVE_PER_EPOCH_DENOISE == 0:
-            save_denoise_model(epoch, avg_loss, model, optimizer, save_dir)
+            save_denoise_model(
+                model, optimizer, epoch, avg_loss, save_dir, gaussian_noise_model
+            )
 
     return model, training_losses
 
