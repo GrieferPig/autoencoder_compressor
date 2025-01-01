@@ -1,7 +1,9 @@
 # Imports
+from sklearn.linear_model import LinearRegression
 from config import *
 from utils import calculate_psnr_ssim, save_autoenc_model
 import torch
+import torch.nn as nn
 import random
 from sklearn.metrics.pairwise import cosine_similarity
 from Autoencoder import Autoencoder
@@ -10,6 +12,8 @@ from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 from pytorch_msssim import ssim, ms_ssim
 from tqdm import tqdm
+import numpy as np
+from torch.amp import GradScaler, autocast
 
 
 def train_ae_model(
@@ -20,6 +24,7 @@ def train_ae_model(
     custom_dataset,
     epochs=EPOCHS_BASE_AE,
     till_convergence=False,
+    use_ssim=False,
 ):
     """
     Trains the Autoencoder model.
@@ -42,15 +47,33 @@ def train_ae_model(
 
     # Define optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=LR_AE)
+    scaler = GradScaler()
+    if use_ssim:
+
+        def ssim_loss(x, y):
+            return 1 - ssim(
+                x,
+                y,
+                data_range=1,
+                size_average=True,
+                nonnegative_ssim=True,
+            )
+
+        criterion = ssim_loss
+    else:
+        criterion = nn.MSELoss()
 
     if till_convergence:
         # set a large number of epochs to train until convergence
         epochs = 99999
-        # set to 1 to avoid division by zero
-        last_ssim = 1
-        ssim_not_improved_count = 0
+        last_ssim = -float("inf")
         # forcefully train 500 epochs before testing for convergence to avoid noise recon
         patience = 500
+        last_100_loss = np.empty(100)
+
+    overview_loss = np.empty(epochs)
+    overview_psnr = np.empty(epochs // 100)
+    overview_ssim = np.empty(epochs // 100)
 
     # Training loop
     model.train()
@@ -61,44 +84,56 @@ def train_ae_model(
             for batch in dataloader:
                 batch = batch.to(DEVICE)
                 optimizer.zero_grad()
-                recon_batch, _ = model(batch)
-                loss = 1 - ssim(
-                    batch,
-                    recon_batch,
-                    data_range=1,
-                    size_average=True,
-                    nonnegative_ssim=True,
-                )
-                loss.backward()
-                optimizer.step()
+                with autocast(device_type=DEVICE):  # <-- Start autocast context
+                    recon_batch, _ = model(batch)
+                    loss = criterion(recon_batch, batch)
+
+                # Scale the loss and call backward
+                scaler.scale(loss).backward()  # <-- Scale loss and backward
+                scaler.step(optimizer)  # <-- Scaled optimizer step
+                scaler.update()  # <-- Update the scaler
                 epoch_loss += loss.item()
 
             avg_loss = epoch_loss / len(dataloader)
+            last_100_loss[epoch % 100] = avg_loss
+            overview_loss[epoch] = avg_loss
             tepochs.set_postfix(loss=f"{avg_loss*100:.4f} %")
-            if (epoch + 1) % 10 == 0 and till_convergence and epoch > patience:
-                # test the relative difference between the last ssim and the current one
-                if abs(avg_loss - last_ssim) < 1e-5:
-                    print(f"Converged at epoch {epoch+1}")
-                    ssim_not_improved_count += 1
-                else:
-                    ssim_not_improved_count -= 1
-                    if ssim_not_improved_count < 0:
-                        ssim_not_improved_count = 0
-                last_ssim = avg_loss
-                if ssim_not_improved_count > 10:
+            if (epoch + 1) % 100 == 0 and till_convergence:
+                # do linear regression on last 100 losses
+                # test if the slope is less than 0.01
+                x = np.arange(len(last_100_loss)).reshape(-1, 1)
+                y = np.array(last_100_loss).reshape(-1, 1)
+                reg = LinearRegression().fit(x, y)
+                slope = abs(reg.coef_[0][0])
+                # also test if ssim is within +-0.01 of last ssim
+                _, avg_psnr, avg_ssim = inference_ae_model(model, dataloader)
+                overview_psnr[epoch // 100] = avg_psnr
+                overview_ssim[epoch // 100] = avg_ssim
+                if (
+                    abs(avg_ssim - last_ssim) < 0.005
+                    and slope < 5e-6
+                    and epoch > patience
+                ):
+                    print(
+                        f"break at absolute ssim diff: {abs(avg_ssim - last_ssim)}, slope: {slope}"
+                    )
                     break
-        # Save the model checkpoint every SAVE_PER_EPOCH_DENOISE
-        if (epoch + 1) % SAVE_PER_EPOCH_AE == 0:
-            save_autoenc_model(
-                epoch + 1,
-                avg_loss,
-                model.state_dict(),
-                optimizer.state_dict(),
-                ENC_LAYERS,
-                IMG_SET_SIZE,
-                LATENT_DIM,
-                custom_dataset.indices,
-            )
+
+                last_ssim = avg_ssim
+                last_100_loss = np.empty(100)
+
+            # Save the model checkpoint every SAVE_PER_EPOCH_DENOISE
+            if (epoch + 1) % SAVE_PER_EPOCH_AE == 0:
+                save_autoenc_model(
+                    epoch + 1,
+                    avg_loss,
+                    model.state_dict(),
+                    optimizer.state_dict(),
+                    ENC_LAYERS,
+                    IMG_SET_SIZE,
+                    LATENT_DIM,
+                    custom_dataset.indices,
+                )
 
     # Save the trained model
     save_autoenc_model(
@@ -113,6 +148,17 @@ def train_ae_model(
         final=True,
         convergence=till_convergence,
     )
+
+    # store trend of loss, psnr and ssim
+    if till_convergence:
+        torch.save(
+            {
+                "loss": overview_loss,
+                "psnr": overview_psnr,
+                "ssim": overview_ssim,
+            },
+            f"{SAVE_DIR}/trend_{ENC_LAYERS}_{IMG_SET_SIZE}_{LATENT_DIM}.pth",
+        )
 
     return model, avg_loss
 
@@ -133,34 +179,26 @@ def inference_ae_model(model, dataloader, num_examples=100):
     """
     model.eval()
     mse_total = 0
-    avg_psnr = 0
-    avg_ssim = 0
 
     with torch.no_grad():
-        eval_set = torch.zeros((num_examples, 3, ENC_IO_SIZE, ENC_IO_SIZE)).to(DEVICE)
+        eval_set = torch.empty(0).to(DEVICE)
         for batch in dataloader:
             batch = batch.to(DEVICE)
             eval_set = torch.cat((eval_set, batch), dim=0)
-            # fill the eval_set until it reaches num_examples
             if len(eval_set) > num_examples:
                 eval_set = eval_set[:num_examples]
                 break
 
         recon_batch, _ = model(eval_set)
-        batch_psnr, batch_ssim = calculate_psnr_ssim(eval_set, recon_batch)
-        avg_psnr += batch_psnr
-        avg_ssim += batch_ssim
+        avg_psnr, avg_ssim = calculate_psnr_ssim(eval_set, recon_batch)
 
-        for i in range(len(batch)):
+        for i in range(len(eval_set)):
             original_flat = eval_set[i].view(-1).cpu().numpy()
             reconstructed_flat = recon_batch[i].view(-1).cpu().numpy()
             mse_val = ((original_flat - reconstructed_flat) ** 2).mean()
             mse_total += mse_val
 
     mean_mse = mse_total / num_examples
-    avg_psnr /= num_examples
-    avg_ssim /= num_examples
-
     return mean_mse, avg_psnr, avg_ssim
 
 

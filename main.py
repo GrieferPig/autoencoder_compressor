@@ -102,6 +102,9 @@ def main():
         help="Train AE model until convergence (SSIM improvement < 0.01 in last 50 epochs)",
     )
     parser.add_argument("--shuffle", action="store_true", help="Shuffle dataset")
+    parser.add_argument(
+        "--ssim", action="store_true", help="Use SSIM loss for training"
+    )
 
     args = parser.parse_args()
     enc_config_str = None
@@ -165,6 +168,7 @@ def main():
                 custom_dataset=dataset,
                 epochs=epochs,
                 till_convergence=args.convergence,
+                use_ssim=args.ssim,
             )
 
             print(f"AE training completed. Final avg_loss: {avg_loss:.4f}")
