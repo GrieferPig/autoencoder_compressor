@@ -6,9 +6,8 @@ from torch.utils.data import Dataset, DataLoader, random_split
 from DnCNN import DenoisingModel
 import math
 
-from config import SAVE_DIR_CKPT
+from config import SAVE_DIR_CKPT, DEVICE
 import random
-from config import DEVICE
 import matplotlib.pyplot as plt
 
 
@@ -40,7 +39,7 @@ class DenoiseDataset(Dataset):
             self.current_data = (
                 checkpoint["clean"],
                 checkpoint["recon"],
-                checkpoint.get("residual", None),
+                checkpoint["residual"],
             )
             self.current_chunk = chunk_idx
             self.current_indice_range = self.chunk_indices_range[chunk_idx]
@@ -58,6 +57,7 @@ class DenoiseDataset(Dataset):
             return (
                 self.current_data[1][global_idx - current_min],
                 self.current_data[0][global_idx - current_min],
+                self.current_data[2][global_idx - current_min],
             )
 
         # find the min chunk index where the global index is less than the chunk index range
@@ -71,6 +71,7 @@ class DenoiseDataset(Dataset):
         return (
             self.current_data[1][global_idx - current_min],
             self.current_data[0][global_idx - current_min],
+            self.current_data[2][global_idx - current_min],
         )
 
 
@@ -83,21 +84,17 @@ def main():
     num_samples = 0
     chunk_files = []
     chunk_indices_range = []
-    count = 0
     for f in os.listdir(data_dir):
         if f.startswith("dataset_") and f.endswith(".pth"):
             filename = os.path.join(data_dir, f)
             print(f"Loading {filename}")
-            checkpoint = torch.load(filename, map_location="cpu")
+            checkpoint = torch.load(filename, map_location="cpu", weights_only=True)
             chunk_files.append(filename)
             chunk_indices_range.append(
                 (num_samples, num_samples + len(checkpoint["clean"]))
             )
             num_samples += len(checkpoint["clean"])
             del checkpoint
-            count += 1
-            if count == 2:
-                break
 
     if num_samples == 0:
         raise ValueError("No samples found in the dataset.")
@@ -130,19 +127,98 @@ def main():
     val_set = DenoiseDataset(chunk_files, chunk_indices_range, val_indices)
     test_set = DenoiseDataset(chunk_files, chunk_indices_range, test_indices)
 
-    # Plot a sample data from train dataset
-    def plot_sample(set):
-        recon, clean = set[0]
-        fig, axes = plt.subplots(1, 2)
-        axes[0].imshow(recon[0].permute(1, 2, 0).cpu().numpy().squeeze(), cmap="gray")
-        axes[0].set_title("Reconstructed Image")
-        axes[1].imshow(clean[0].permute(1, 2, 0).cpu().numpy().squeeze(), cmap="gray")
-        axes[1].set_title("Clean Image")
-        plt.show()
+    # Create DataLoaders
+    train_loader = DataLoader(train_set, batch_size=2)
+    val_loader = DataLoader(val_set, batch_size=2)
+    test_loader = DataLoader(test_set, batch_size=1)
 
-    plot_sample(train_set)
+    device = DEVICE
+    print(f"Using device: {device}")
 
-    print(train_set[0])
+    model = DenoisingModel().to(device)
+    criterion = nn.MSELoss()
+    optimizer = optim.Adam(model.parameters(), lr=1e-4)
+
+    os.makedirs("checkpoints", exist_ok=True)
+
+    for epoch in range(1, 20):
+        model.train()
+        running_loss = 0.0
+        for recon, _, residual in train_loader:
+            recon, residual = recon.to(device), residual.to(device)
+            optimizer.zero_grad()
+            outputs = model(recon)
+            loss = criterion(outputs, residual)
+            loss.backward()
+            optimizer.step()
+            running_loss += loss.item() * recon.size(0)
+        epoch_loss = running_loss / len(train_loader.dataset)
+
+        # Validation
+        model.eval()
+        val_loss = 0.0
+        with torch.no_grad():
+            for recon, _, residual in train_loader:
+                recon, residual = recon.to(device), residual.to(device)
+                outputs = model(recon)
+                loss = criterion(outputs, residual)
+                val_loss += loss.item() * recon.size(0)
+        val_loss /= len(val_loader.dataset)
+
+        print(
+            f"Epoch [{epoch}/500] Train Loss: {epoch_loss:.6f} Val Loss: {val_loss:.6f}"
+        )
+
+        if epoch % 20 == 0:
+            checkpoint = {
+                "epoch": epoch,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "train_loss": epoch_loss,
+                "val_loss": val_loss,
+            }
+            checkpoint_path = os.path.join("checkpoints", f"dncnn_epoch_{epoch}.pth")
+            torch.save(checkpoint, checkpoint_path)
+            print(f"Checkpoint saved at {checkpoint_path}")
+
+    # Test the model
+    # Select 4 images from the test set and plot them
+    samples = []
+    model.eval()
+    test_loss = 0.0
+    with torch.no_grad():
+        for recon, clean, residual in test_loader:
+            recon, residual = recon.to(device), residual.to(device)
+            outputs = model(recon)
+            loss = criterion(outputs, residual)
+            if len(samples) < 5:
+                samples.append(
+                    (
+                        recon.squeeze().cpu(),
+                        (outputs + recon).squeeze().cpu(),
+                        clean.squeeze().cpu(),
+                    )
+                )
+            test_loss += loss.item() * recon.size(0)
+    test_loss /= len(test_loader.dataset)
+
+    fig, axes = plt.subplots(4, 3, figsize=(12, 12))
+    for i, (recon, output, clean) in enumerate(samples):
+        axes[i, 0].imshow(recon.permute(1, 2, 0).numpy())
+        axes[i, 0].set_title("Noisy")
+        axes[i, 0].axis("off")
+
+        axes[i, 1].imshow(output.permute(1, 2, 0).numpy())
+        axes[i, 1].set_title("Denoised")
+        axes[i, 1].axis("off")
+
+        axes[i, 2].imshow(clean.permute(1, 2, 0).numpy())
+        axes[i, 2].set_title("Clean")
+        axes[i, 2].axis("off")
+
+    plt.tight_layout()
+    plt.show()
+    print(f"Test Loss: {test_loss:.6f}")
 
     # Save the final model
     torch.save(model.state_dict(), "dncnn_final.pth")
