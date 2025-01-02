@@ -83,6 +83,7 @@ def main():
     num_samples = 0
     chunk_files = []
     chunk_indices_range = []
+    count = 0
     for f in os.listdir(data_dir):
         if f.startswith("dataset_") and f.endswith(".pth"):
             filename = os.path.join(data_dir, f)
@@ -94,6 +95,9 @@ def main():
             )
             num_samples += len(checkpoint["clean"])
             del checkpoint
+            count += 1
+            if count == 2:
+                break
 
     if num_samples == 0:
         raise ValueError("No samples found in the dataset.")
@@ -126,15 +130,9 @@ def main():
     val_set = DenoiseDataset(chunk_files, chunk_indices_range, val_indices)
     test_set = DenoiseDataset(chunk_files, chunk_indices_range, test_indices)
 
-    # Create DataLoaders
-    train_loader = DataLoader(train_set, batch_size=2, shuffle=False, num_workers=1)
-    val_loader = DataLoader(val_set, batch_size=2, shuffle=False, num_workers=1)
-    test_loader = DataLoader(test_set, batch_size=2, shuffle=False, num_workers=1)
-
     # Plot a sample data from train dataset
-    def plot_sample(data_loader):
-        data_iter = iter(data_loader)
-        recon, clean = next(data_iter)
+    def plot_sample(set):
+        recon, clean = set[0]
         fig, axes = plt.subplots(1, 2)
         axes[0].imshow(recon[0].permute(1, 2, 0).cpu().numpy().squeeze(), cmap="gray")
         axes[0].set_title("Reconstructed Image")
@@ -142,7 +140,7 @@ def main():
         axes[1].set_title("Clean Image")
         plt.show()
 
-    plot_sample(train_loader)
+    plot_sample(train_set)
 
     print(train_set[0])
 
