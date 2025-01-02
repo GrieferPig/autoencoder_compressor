@@ -42,7 +42,10 @@ def train_denoise_model(
         training_losses (list): List of average losses per epoch.
     """
     if not (gaussian_noise_model or (enc_layers and img_set_size and latent_dim)):
-        raise ValueError("Please provide valid model configuration.")
+        # no model configuration, set to general model
+        save_dir = os.path.join(save_dir, "general")
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
 
     # Initialize the DnCNN model
     model = DenoisingModel().to(DEVICE)
@@ -172,7 +175,10 @@ def plot_denoise_results(
             f"denoise_results_{enc_layers}_{img_set_size}_{latent_dim}.png",
         )
     else:
-        raise ValueError("Please provide valid model configuration.")
+        # no model configuration, set to general model
+        figure_path = os.path.join(
+            SAVE_DIR_DENOISE_FIGURES, "denoise_results_general.png"
+        )
 
     model.eval()
     examples = random.sample(range(len(dataset)), num_samples)
