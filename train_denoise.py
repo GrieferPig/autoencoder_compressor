@@ -159,7 +159,7 @@ def main():
             optimizer.zero_grad()
 
             # Enable autocast for mixed precision
-            with autocast():
+            with autocast(device_type=device, enabled=True, dtype=torch.bfloat16):
                 outputs = model(recon)
                 loss = criterion(outputs, residual)
 
