@@ -20,7 +20,6 @@ from torch.utils.data import DataLoader
 def main():
     # Load a small subset of the dataset (e.g., 10 samples)
     base_dataset = load_dataset(DATASET_REPO, split=DATASET_SPLIT)
-    ae_dataset = AEDataset(base_dataset, shuffle=False)
 
     checkpoint_dir = os.path.join(SAVE_DIR_CKPT, "final")
     if not os.path.isdir(checkpoint_dir):
@@ -58,16 +57,19 @@ def main():
         )
         model.eval()
 
+        ae_dataset = AEDataset(base_dataset, shuffle=False, indices=indices)
+        loader = DataLoader(ae_dataset, batch_size=16, shuffle=False)
+
         # Collect images for display
         clean_imgs = torch.empty(0)
         recon_imgs = torch.empty(0)
         residuals = torch.empty(0)
 
         with torch.no_grad():
-            for indice in indices:
-                image = ae_dataset[indice].unsqueeze(0).to(DEVICE)
+            for batch in loader:
+                image = batch.to(DEVICE)
                 recon_img, _ = model(image)
-                residual = torch.abs(image - recon_img)
+                residual = image - recon_img
 
                 clean_imgs = torch.cat((clean_imgs, image), dim=0)
                 recon_imgs = torch.cat((recon_imgs, recon_img), dim=0)
