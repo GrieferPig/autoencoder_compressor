@@ -131,15 +131,9 @@ def main():
     test_set = DenoiseDataset(chunk_files, chunk_indices_range, test_indices)
 
     # Create DataLoaders
-    train_loader = DataLoader(
-        train_set, batch_size=2, shuffle=True, num_workers=4, pin_memory=True
-    )
-    val_loader = DataLoader(
-        val_set, batch_size=2, shuffle=False, num_workers=4, pin_memory=True
-    )
-    test_loader = DataLoader(
-        test_set, batch_size=1, shuffle=False, num_workers=4, pin_memory=True
-    )
+    train_loader = DataLoader(train_set, batch_size=2, shuffle=True)
+    val_loader = DataLoader(val_set, batch_size=2, shuffle=False)
+    test_loader = DataLoader(test_set, batch_size=1, shuffle=False)
 
     device = DEVICE
     print(f"Using device: {device}")
