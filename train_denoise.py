@@ -8,6 +8,7 @@ import math
 
 from config import SAVE_DIR_CKPT
 import random
+from config import DEVICE
 import matplotlib.pyplot as plt
 
 
@@ -34,7 +35,7 @@ class DenoiseDataset(Dataset):
                 del self.current_data
             print(f"Loading chunk {chunk_idx}")
             checkpoint = torch.load(
-                self.chunk_files[chunk_idx], map_location="cuda", weights_only=True
+                self.chunk_files[chunk_idx], map_location=DEVICE, weights_only=True
             )
             self.current_data = (
                 checkpoint["clean"],
