@@ -68,12 +68,18 @@ if __name__ == "__main__":
     )
 
     # Train for 500 epochs, save checkpoint every 50
-    EPOCHS = 500
+    EPOCHS = 1
     SAVE_PER_EPOCH = 50
     model, train_losses = train_denoise_model(
         dataloader=train_loader,
         gaussian_noise_model=False,  # Because we use AE residual chunks
         epochs=EPOCHS,
+    )
+
+    # save final model
+    torch.save(
+        {"model_state_dict": model.state_dict(), "train_losses": train_losses},
+        "final_denoise_model.pth",
     )
 
     # Manual checkpoint saves every 50 epochs if needed
