@@ -58,16 +58,25 @@ def main():
         model.eval()
 
         _, dataloader = init_ae_dataset(
-            base_dataset, length=10, indices=indices, shuffle=False
+            base_dataset,
+            indices=indices,
+            shuffle=False,
+            process_on_demand=True,
         )
 
-        # Collect images for display
-        clean_imgs = torch.empty(0)
-        recon_imgs = torch.empty(0)
-        residuals = torch.empty(0)
+        if not os.path.exists(os.path.join(SAVE_DIR_CKPT, "denoise_dataset")):
+            os.mkdir(os.path.join(SAVE_DIR_CKPT, "denoise_dataset"))
+
+        count = 0
 
         with torch.no_grad():
-            for batch in dataloader:
+            for idx, batch in enumerate(dataloader):
+                count += len(batch)
+                print(f"Processing batch {idx} @ {count}")
+                # Collect images for display
+                clean_imgs = torch.empty(0)
+                recon_imgs = torch.empty(0)
+                residuals = torch.empty(0)
                 image = batch.to(DEVICE)
                 recon_img, _ = model(image)
                 residual = image - recon_img
@@ -79,49 +88,19 @@ def main():
                 clean_imgs = torch.cat((clean_imgs, image), dim=0)
                 recon_imgs = torch.cat((recon_imgs, recon_img), dim=0)
                 residuals = torch.cat((residuals, residual), dim=0)
-
-        length = 10
-
-        # Plot all 10 results in a 3-row layout (clean, recon, residual)
-        fig, axes = plt.subplots(nrows=3, ncols=length, figsize=(length * 3, 9))
-        fig.suptitle(
-            f"AE Model: enc_layers=2, img_set_size={img_set_size}, latent_dim={latent_dim}"
-        )
-
-        for i in range(length):
-            # Clean
-            ax = axes[0, i] if length > 1 else axes[0]
-            np_img = np.transpose(clean_imgs[i].numpy(), (1, 2, 0))
-            np_img = np.clip(np_img, 0, 1)
-            ax.imshow(np_img)
-            ax.set_title("Clean")
-            ax.axis("off")
-
-            # Recon
-            ax = axes[1, i] if length > 1 else axes[1]
-            np_img = np.transpose(recon_imgs[i].numpy(), (1, 2, 0))
-            np_img = np.clip(np_img, 0, 1)
-            ax.imshow(np_img)
-            ax.set_title("Reconstructed")
-            ax.axis("off")
-
-            # Residual
-            ax = axes[2, i] if length > 1 else axes[2]
-            np_img = np.transpose(residuals[i].numpy(), (1, 2, 0))
-            # Rescale residual for visualization
-            res_min, res_max = np_img.min(), np_img.max()
-            if abs(res_max - res_min) > 1e-9:
-                np_img = (np_img - res_min) / (res_max - res_min)
-            ax.imshow(np_img)
-            ax.set_title("Residual")
-            ax.axis("off")
-
-        # Show and optionally save
-        plt.tight_layout()
-        plt.show()
-        # If desired, one could save each figure:
-        # plt.savefig(os.path.join(SAVE_DIR_FIGURES, f"inference_{ckpt_file}.png"))
-        plt.close(fig)
+                # Save the images
+                torch.save(
+                    {
+                        "clean": clean_imgs,
+                        "recon": recon_imgs,
+                        "residual": residuals,
+                    },
+                    os.path.join(
+                        SAVE_DIR_CKPT,
+                        "denoise_dataset",
+                        f"dataset_{ckpt_file}_{idx}.pth",
+                    ),
+                )
 
 
 if __name__ == "__main__":

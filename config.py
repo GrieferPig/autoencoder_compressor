@@ -30,7 +30,12 @@ SAVE_PER_EPOCH_DENOISE = 10
 NUM_SAMPLES_DENOISE = 4
 
 # Default device
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+if torch.cuda.is_available():
+    DEVICE = torch.device("cuda")
+elif torch.xpu.is_available():
+    DEVICE = torch.device("xpu")
+else:
+    DEVICE = torch.device("cpu")
 
 # Compression settings
 JPEG_QUALITY_FACTORS = list(range(0, 101, 10))  # 0 to 100 with step 10
@@ -42,4 +47,4 @@ BATCH_SIZE_DENOISE_DATA_INFERENCE = 32
 BATCH_SIZE_DENOISE_DATA = 2
 
 # Autoencoder dataset settings
-BATCH_SIZE_AE_DATA = 64
+BATCH_SIZE_AE_DATA = 256

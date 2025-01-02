@@ -14,6 +14,7 @@ class AEDataset(torch.utils.data.Dataset):
         transform_img_size=ENC_IO_SIZE,
         indices=None,
         shuffle=True,
+        process_on_demand=False,
     ):
         if indices is None:
             indices = np.arange(len(dataset))
@@ -28,6 +29,9 @@ class AEDataset(torch.utils.data.Dataset):
 
         self.indices = indices
         self.dataset = torch.utils.data.Subset(dataset, indices)
+        self.process_on_demand = process_on_demand
+
+        self.len = len(indices)
 
         self.transform = transforms.Compose(
             [
@@ -36,37 +40,52 @@ class AEDataset(torch.utils.data.Dataset):
             ]
         )
 
-        self._preprocess_all_images(device)
+        if not process_on_demand:
+            self._preprocess_all_images(device)
 
     def _preprocess_all_images(self, device):
-        preprocessed_images = []
+        self.preprocessed_data = []
         for idx in range(len(self.dataset)):
-            example = self.dataset[idx]
-            image = example["image"]
-
-            # Ensure the image is in RGB format
-            if image.mode != "RGB":
-                image = image.convert("RGB")
-
-            # Apply the transformations
-            if self.transform:
-                image = self.transform(image)
-
-            preprocessed_images.append(image)
+            self.preprocessed_data.append(self._preprocess_one_image(idx))
             if idx % 100 == 0:
                 print(f"Preprocessed {idx} / {len(self.dataset)} images")
 
-        self.preprocessed_data = torch.stack(preprocessed_images).to(device)
+        self.preprocessed_data = torch.stack(self.preprocessed_data).to(device)
+
+    def _preprocess_one_image(self, idx):
+        example = self.dataset[idx]
+        image = example["image"]
+
+        # Ensure the image is in RGB format
+        if image.mode != "RGB":
+            image = image.convert("RGB")
+
+        # Apply the transformations
+        if self.transform:
+            image = self.transform(image)
+
+        return image
 
     def __len__(self):
-        return len(self.preprocessed_data)
+        return self.len
 
     def __getitem__(self, idx):
+        if self.process_on_demand:
+            return self._preprocess_one_image(idx)
+
         return self.preprocessed_data[idx]
 
 
-def init_ae_dataset(dataset, length=None, indices=None, shuffle=True):
-    custom_dataset = AEDataset(dataset, length=length, indices=indices, shuffle=shuffle)
+def init_ae_dataset(
+    dataset, length=None, indices=None, shuffle=True, process_on_demand=False
+):
+    custom_dataset = AEDataset(
+        dataset,
+        length=length,
+        indices=indices,
+        shuffle=shuffle,
+        process_on_demand=process_on_demand,
+    )
     dataloader = torch.utils.data.DataLoader(
         custom_dataset, batch_size=BATCH_SIZE_AE_DATA, shuffle=False
     )
