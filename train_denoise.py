@@ -1,93 +1,153 @@
 import os
-import glob
 import torch
-import random
+import torch.nn as nn
+import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader, random_split
-from denoise import train_denoise_model
-from config import DEVICE, BATCH_SIZE_DENOISE_DATA
+from DnCNN import DenoisingModel
+import math
+
+from config import SAVE_DIR_CKPT
+import random
+import matplotlib.pyplot as plt
 
 
-class ChunkedDenoiseDataset(Dataset):
-    """
-    Loads denoise data generated from `generate_denoise_dataset` on demand from several .pth chunks.
-    Each .pth file contains a dict with "clean", "recon", and "residual".
-    """
+class DenoiseDataset(Dataset):
 
-    def __init__(self, chunk_dir="results/ckpt/denoise_dataset", transform=None):
-        super().__init__()
-        self.transform = transform
-        self.chunk_files = glob.glob(os.path.join(chunk_dir, "*.pth"))
-        random.shuffle(self.chunk_files)
-        # Build an index of (file_index, sample_index_in_file)
-        self.index_map = []
-        self.file_content_lens = {}
-        for fidx, path in enumerate(self.chunk_files):
-            chunk_data = torch.load(path, map_location="cpu")
-            length = len(chunk_data["clean"])
-            self.file_content_lens[fidx] = length
-            # Create an index for each sample of this chunk
-            for idx in range(length):
-                self.index_map.append((fidx, idx))
-        random.shuffle(self.index_map)
+    def __init__(self, chunk_files, chunk_indices_range, indices):
+        """
+        Initializes the dataset by mapping global indices to specific chunks and sample indices.
+        """
+        self.chunk_files = chunk_files
+        self.chunk_indices_range = chunk_indices_range
+        self.indices = indices
+        self.current_chunk = None
+        self.current_data = None
+        self.current_indice_range = None
+        self.load_chunk(0)
+
+    def load_chunk(self, chunk_idx):
+        """
+        Loads the specified chunk into memory.
+        """
+        if self.current_chunk != chunk_idx:
+            if self.current_data is not None:
+                del self.current_data
+            print(f"Loading chunk {chunk_idx}")
+            checkpoint = torch.load(
+                self.chunk_files[chunk_idx], map_location="cuda", weights_only=True
+            )
+            self.current_data = (
+                checkpoint["clean"],
+                checkpoint["recon"],
+                checkpoint.get("residual", None),
+            )
+            self.current_chunk = chunk_idx
+            self.current_indice_range = self.chunk_indices_range[chunk_idx]
 
     def __len__(self):
-        return len(self.index_map)
+        return len(self.indices)
 
     def __getitem__(self, idx):
-        fidx, sample_idx = self.index_map[idx]
-        file_path = self.chunk_files[fidx]
-        chunk_data = torch.load(file_path, map_location="cpu")
-        noisy_img = chunk_data["recon"][sample_idx]
-        residual = chunk_data["residual"][sample_idx]
-        clean_img = chunk_data["clean"][sample_idx]
-        return noisy_img, residual, clean_img
+        """
+        Retrieves the recon and clean images for the given index.
+        """
+        global_idx = self.indices[idx]
+        current_min, current_max = self.current_indice_range
+        if current_min <= global_idx < current_max:
+            return (
+                self.current_data[1][global_idx - current_min],
+                self.current_data[0][global_idx - current_min],
+            )
+
+        # find the min chunk index where the global index is less than the chunk index range
+        chunk_idx = next(
+            i
+            for i, (min_idx, max_idx) in enumerate(self.chunk_indices_range)
+            if global_idx < max_idx
+        )
+        self.load_chunk(chunk_idx)
+        current_min, current_max = self.current_indice_range
+        return (
+            self.current_data[1][global_idx - current_min],
+            self.current_data[0][global_idx - current_min],
+        )
+
+
+def main():
+    data_dir = os.path.join(SAVE_DIR_CKPT, "denoise_dataset")
+    if not os.path.isdir(data_dir):
+        raise FileNotFoundError(f"Data directory {data_dir} does not exist.")
+
+    # Calculate the total number of samples
+    num_samples = 0
+    chunk_files = []
+    chunk_indices_range = []
+    for f in os.listdir(data_dir):
+        if f.startswith("dataset_") and f.endswith(".pth"):
+            filename = os.path.join(data_dir, f)
+            print(f"Loading {filename}")
+            checkpoint = torch.load(filename, map_location="cpu")
+            chunk_files.append(filename)
+            chunk_indices_range.append(
+                (num_samples, num_samples + len(checkpoint["clean"]))
+            )
+            num_samples += len(checkpoint["clean"])
+            del checkpoint
+
+    if num_samples == 0:
+        raise ValueError("No samples found in the dataset.")
+
+    print(f"Found {num_samples} samples in the dataset.")
+
+    # Create a list of global indices
+    indices = list(range(num_samples))
+
+    # Split the indices into train, val, and test sets
+    train_size = math.ceil(0.8 * num_samples)
+    val_size = math.ceil(0.1 * num_samples)
+    test_size = num_samples - train_size - val_size
+    train_subset, val_subset, test_subset = random_split(
+        indices, [train_size, val_size, test_size]
+    )
+
+    # Convert Subset objects to lists
+    train_indices = list(train_subset)
+    val_indices = list(val_subset)
+    test_indices = list(test_subset)
+
+    # sort the indices to decrease the number of chunk loads
+    train_indices = sorted(train_indices)
+    val_indices = sorted(val_indices)
+    test_indices = sorted(test_indices)
+
+    # Instantiate datasets
+    train_set = DenoiseDataset(chunk_files, chunk_indices_range, train_indices)
+    val_set = DenoiseDataset(chunk_files, chunk_indices_range, val_indices)
+    test_set = DenoiseDataset(chunk_files, chunk_indices_range, test_indices)
+
+    # Create DataLoaders
+    train_loader = DataLoader(train_set, batch_size=2, shuffle=False, num_workers=1)
+    val_loader = DataLoader(val_set, batch_size=2, shuffle=False, num_workers=1)
+    test_loader = DataLoader(test_set, batch_size=2, shuffle=False, num_workers=1)
+
+    # Plot a sample data from train dataset
+    def plot_sample(data_loader):
+        data_iter = iter(data_loader)
+        recon, clean = next(data_iter)
+        fig, axes = plt.subplots(1, 2)
+        axes[0].imshow(recon[0].permute(1, 2, 0).cpu().numpy().squeeze(), cmap="gray")
+        axes[0].set_title("Reconstructed Image")
+        axes[1].imshow(clean[0].permute(1, 2, 0).cpu().numpy().squeeze(), cmap="gray")
+        axes[1].set_title("Clean Image")
+        plt.show()
+
+    plot_sample(train_loader)
+
+    print(train_set[0])
+
+    # Save the final model
+    torch.save(model.state_dict(), "dncnn_final.pth")
 
 
 if __name__ == "__main__":
-    # Prepare dataset
-    dataset = ChunkedDenoiseDataset()
-
-    # Split into train, val, test
-    total_len = len(dataset)
-    val_len = int(0.15 * total_len)
-    test_len = int(0.15 * total_len)
-    train_len = total_len - val_len - test_len
-    train_dataset, val_dataset, test_dataset = random_split(
-        dataset, [train_len, val_len, test_len]
-    )
-
-    # Prepare dataloader
-    train_loader = DataLoader(
-        train_dataset, batch_size=BATCH_SIZE_DENOISE_DATA, shuffle=True
-    )
-    val_loader = DataLoader(
-        val_dataset, batch_size=BATCH_SIZE_DENOISE_DATA, shuffle=False
-    )
-    test_loader = DataLoader(
-        test_dataset, batch_size=BATCH_SIZE_DENOISE_DATA, shuffle=False
-    )
-
-    # Train for 500 epochs, save checkpoint every 50
-    EPOCHS = 1
-    SAVE_PER_EPOCH = 50
-    model, train_losses = train_denoise_model(
-        dataloader=train_loader,
-        gaussian_noise_model=False,  # Because we use AE residual chunks
-        epochs=EPOCHS,
-    )
-
-    # save final model
-    torch.save(
-        {"model_state_dict": model.state_dict(), "train_losses": train_losses},
-        "final_denoise_model.pth",
-    )
-
-    # Manual checkpoint saves every 50 epochs if needed
-    # (the train_denoise_model call can also be modified to pass in a custom save frequency).
-    # For demonstration, assume we don't alter train_denoise_model, so do a manual save below.
-    # This snippet is conceptual if user wants additional saves beyond the built-in process.
-    # for epoch_i in range(EPOCHS):
-    #     ...
-    #     if (epoch_i + 1) % SAVE_PER_EPOCH == 0:
-    #         # save checkpoint manually
-    #         pass
+    main()
