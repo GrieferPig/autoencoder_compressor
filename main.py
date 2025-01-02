@@ -105,6 +105,9 @@ def main():
     parser.add_argument(
         "--ssim", action="store_true", help="Use SSIM loss for training"
     )
+    parser.add_argument(
+        "--decoder", action="store_true", help="Get decoder size instead of full model"
+    )
 
     args = parser.parse_args()
     enc_config_str = None
@@ -381,6 +384,8 @@ def main():
                 latent_dim=latent_dim,
                 load_optimizer=False,
             )
+            if args.decoder:
+                model = model.decoder
             model_size = get_model_size(model)
         elif args.model_type == "denoise":
             if method == "gaussian":
