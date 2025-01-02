@@ -31,11 +31,11 @@ NUM_SAMPLES_DENOISE = 4
 
 # Default device
 if torch.cuda.is_available():
-    DEVICE = torch.device("cuda")
+    DEVICE = "cuda"
 elif torch.xpu.is_available():
-    DEVICE = torch.device("xpu")
+    DEVICE = "xpu"
 else:
-    DEVICE = torch.device("cpu")
+    DEVICE = "cpu"
 
 # Compression settings
 JPEG_QUALITY_FACTORS = list(range(0, 101, 10))  # 0 to 100 with step 10

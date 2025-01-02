@@ -10,9 +10,6 @@ from config import SAVE_DIR_CKPT, DEVICE
 import random
 import matplotlib.pyplot as plt
 
-# Import AMP modules
-from torch.amp import GradScaler, autocast
-
 
 class DenoiseDataset(Dataset):
 
@@ -78,6 +75,46 @@ class DenoiseDataset(Dataset):
         )
 
 
+def test_model(model, test_loader, criterion, epochs, device=DEVICE):
+    # Test the model
+    # Select 4 images from the test set and plot them
+    samples = []
+    model.eval()
+    test_loss = 0.0
+    with torch.no_grad():
+        for recon, clean, residual in test_loader:
+            recon, residual = recon.to(device), residual.to(device)
+            outputs = model(recon)
+            loss = criterion(outputs, residual)
+            if len(samples) < 5:
+                samples.append(
+                    (
+                        recon.squeeze().cpu(),
+                        (outputs + recon).squeeze().cpu(),
+                        clean.squeeze().cpu(),
+                    )
+                )
+            test_loss += loss.item() * recon.size(0)
+    test_loss /= len(test_loader.dataset)
+
+    fig, axes = plt.subplots(4, 3, figsize=(12, 12))
+    for i, (recon, output, clean) in enumerate(samples):
+        axes[i, 0].imshow(recon.permute(1, 2, 0).numpy())
+        axes[i, 0].set_title("Noisy")
+        axes[i, 0].axis("off")
+
+        axes[i, 1].imshow(output.permute(1, 2, 0).numpy())
+        axes[i, 1].set_title("Denoised")
+        axes[i, 1].axis("off")
+
+        axes[i, 2].imshow(clean.permute(1, 2, 0).numpy())
+        axes[i, 2].set_title("Clean")
+        axes[i, 2].axis("off")
+
+    plt.tight_layout()
+    plt.savefig(f"test_results_{epochs}.png")
+
+
 def main():
     data_dir = os.path.join(SAVE_DIR_CKPT, "denoise_dataset")
     if not os.path.isdir(data_dir):
@@ -131,9 +168,9 @@ def main():
     test_set = DenoiseDataset(chunk_files, chunk_indices_range, test_indices)
 
     # Create DataLoaders
-    train_loader = DataLoader(train_set, batch_size=2, shuffle=True)
-    val_loader = DataLoader(val_set, batch_size=2, shuffle=False)
-    test_loader = DataLoader(test_set, batch_size=1, shuffle=False)
+    train_loader = DataLoader(train_set, batch_size=2)
+    val_loader = DataLoader(val_set, batch_size=2)
+    test_loader = DataLoader(test_set, batch_size=1)
 
     device = DEVICE
     print(f"Using device: {device}")
@@ -142,114 +179,48 @@ def main():
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
 
-    # Initialize GradScaler for AMP
-    scaler = GradScaler(device=device, enabled=True)
-
     os.makedirs("checkpoints", exist_ok=True)
 
-    num_epochs = 500  # Updated to match the print statement
-
-    for epoch in range(1, num_epochs + 1):
+    for epoch in range(1, 20):
         model.train()
         running_loss = 0.0
         for recon, _, residual in train_loader:
-            recon, residual = recon.to(device, non_blocking=True), residual.to(
-                device, non_blocking=True
-            )
+            recon, residual = recon.to(device), residual.to(device)
             optimizer.zero_grad()
-
-            # Enable autocast for mixed precision
-            with autocast(device_type=device, enabled=True, dtype=torch.bfloat16):
-                outputs = model(recon)
-                loss = criterion(outputs, residual)
-
-            # Scale the loss and perform backward pass
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
-
+            outputs = model(recon)
+            loss = criterion(outputs, residual)
+            loss.backward()
+            optimizer.step()
             running_loss += loss.item() * recon.size(0)
-
         epoch_loss = running_loss / len(train_loader.dataset)
 
         # Validation
         model.eval()
         val_loss = 0.0
         with torch.no_grad():
-            for (
-                recon,
-                _,
-                residual,
-            ) in val_loader:  # Changed from train_loader to val_loader
-                recon, residual = recon.to(device, non_blocking=True), residual.to(
-                    device, non_blocking=True
-                )
-                with autocast(device_type=device, enabled=True, dtype=torch.bfloat16):
-                    outputs = model(recon)
-                    loss = criterion(outputs, residual)
+            for recon, _, residual in train_loader:
+                recon, residual = recon.to(device), residual.to(device)
+                outputs = model(recon)
+                loss = criterion(outputs, residual)
                 val_loss += loss.item() * recon.size(0)
         val_loss /= len(val_loader.dataset)
 
         print(
-            f"Epoch [{epoch}/{num_epochs}] Train Loss: {epoch_loss:.6f} Val Loss: {val_loss:.6f}"
+            f"Epoch [{epoch}/500] Train Loss: {epoch_loss:.6f} Val Loss: {val_loss:.6f}"
         )
 
-        if epoch % 20 == 0:
+        if epoch % 10 == 0:
             checkpoint = {
                 "epoch": epoch,
                 "model_state_dict": model.state_dict(),
                 "optimizer_state_dict": optimizer.state_dict(),
-                "scaler_state_dict": scaler.state_dict(),  # Save scaler state
                 "train_loss": epoch_loss,
                 "val_loss": val_loss,
             }
             checkpoint_path = os.path.join("checkpoints", f"dncnn_epoch_{epoch}.pth")
             torch.save(checkpoint, checkpoint_path)
             print(f"Checkpoint saved at {checkpoint_path}")
-
-    # Test the model
-    # Select 4 images from the test set and plot them
-    samples = []
-    model.eval()
-    test_loss = 0.0
-    with torch.no_grad():
-        for recon, clean, residual in test_loader:
-            recon, residual = recon.to(device, non_blocking=True), residual.to(
-                device, non_blocking=True
-            )
-            with autocast(device_type=device, enabled=True, dtype=torch.bfloat16):
-                outputs = model(recon)
-                loss = criterion(outputs, residual)
-            if len(samples) < 5:
-                samples.append(
-                    (
-                        recon.squeeze().cpu(),
-                        (outputs + recon).squeeze().cpu(),
-                        clean.squeeze().cpu(),
-                    )
-                )
-            test_loss += loss.item() * recon.size(0)
-    test_loss /= len(test_loader.dataset)
-
-    fig, axes = plt.subplots(4, 3, figsize=(12, 12))
-    for i, (recon_img, output_img, clean_img) in enumerate(samples):
-        if i >= 4:
-            break  # Ensure only 4 samples are plotted
-        axes[i, 0].imshow(recon_img.permute(1, 2, 0).numpy())
-        axes[i, 0].set_title("Noisy")
-        axes[i, 0].axis("off")
-
-        axes[i, 1].imshow(output_img.permute(1, 2, 0).numpy())
-        axes[i, 1].set_title("Denoised")
-        axes[i, 1].axis("off")
-
-        axes[i, 2].imshow(clean_img.permute(1, 2, 0).numpy())
-        axes[i, 2].set_title("Clean")
-        axes[i, 2].axis("off")
-
-    plt.tight_layout()
-    plt.show()
-    print(f"Test Loss: {test_loss:.6f}")
+            test_model(model, test_loader, criterion, epoch)
 
     # Save the final model
     torch.save(model.state_dict(), "dncnn_final.pth")
