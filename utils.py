@@ -86,7 +86,7 @@ def load_autoenc_model(enc_layers, img_set_size, latent_dim, load_optimizer=Fals
         f"{SAVE_DIR_CKPT}/final/ae_{enc_layers}_{img_set_size}_{latent_dim}.pth"
     )
     print(f"Loading autoencoder model from {checkpoint_path}")
-    checkpoint = torch.load(checkpoint_path)
+    checkpoint = torch.load(checkpoint_path, map_location=DEVICE)
     model = Autoencoder(
         image_size=ENC_IO_SIZE,
         num_layers=checkpoint["enc_layers"],
@@ -171,7 +171,7 @@ def load_denoise_model(
         raise ValueError("Please provide valid model configuration.")
 
     print(f"Loading denoiser model from {checkpoint_path}")
-    checkpoint = torch.load(checkpoint_path)
+    checkpoint = torch.load(checkpoint_path, map_location=DEVICE)
     model = DenoisingModel().to(DEVICE)
     model.load_state_dict(checkpoint["model_state_dict"])
     if load_optimizer:

@@ -20,7 +20,9 @@ class AEDataset(torch.utils.data.Dataset):
             if shuffle:
                 np.random.shuffle(indices)
 
-        indices = indices.tolist()
+        if not isinstance(indices, list):
+            indices = indices.tolist()
+
         if length is not None:
             indices = indices[:length]
 

@@ -13,7 +13,7 @@ from config import (
 )
 from utils import load_autoenc_model
 from datasets import load_dataset
-from AEDataset import AEDataset
+from AEDataset import AEDataset, init_ae_dataset
 from torch.utils.data import DataLoader
 
 
@@ -57,8 +57,9 @@ def main():
         )
         model.eval()
 
-        ae_dataset = AEDataset(base_dataset, shuffle=False, indices=indices)
-        loader = DataLoader(ae_dataset, batch_size=16, shuffle=False)
+        _, dataloader = init_ae_dataset(
+            base_dataset, length=10, indices=indices, shuffle=False
+        )
 
         # Collect images for display
         clean_imgs = torch.empty(0)
@@ -66,10 +67,14 @@ def main():
         residuals = torch.empty(0)
 
         with torch.no_grad():
-            for batch in loader:
+            for batch in dataloader:
                 image = batch.to(DEVICE)
                 recon_img, _ = model(image)
                 residual = image - recon_img
+
+                image = image.cpu()
+                recon_img = recon_img.cpu()
+                residual = residual.cpu()
 
                 clean_imgs = torch.cat((clean_imgs, image), dim=0)
                 recon_imgs = torch.cat((recon_imgs, recon_img), dim=0)
