@@ -40,6 +40,9 @@ class DenoiseDataset(Dataset):
 
         # Ensure that filenames match
         for clean_file, recon_file in zip(self.clean_files, self.recon_files):
+            # separate name by dot
+            clean_file = clean_file.split(".")[0]
+            recon_file = recon_file.split(".")[0]
             if clean_file != recon_file:
                 raise ValueError(f"Mismatched files: {clean_file} and {recon_file}")
 
