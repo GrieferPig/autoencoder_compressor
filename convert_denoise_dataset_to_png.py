@@ -1,6 +1,5 @@
 import os
 import torch
-from torchvision.utils import save_image
 from torchvision.transforms import ToPILImage
 from PIL import Image
 import argparse
@@ -9,6 +8,7 @@ import tifffile
 
 
 def create_dir(path):
+    """Creates a directory if it doesn't exist."""
     if not os.path.exists(path):
         os.makedirs(path)
 
@@ -58,6 +58,12 @@ def main():
     output_dir = args.output_dir
     categories = args.categories
 
+    # Define which categories should be saved as TIFF
+    tiff_categories = [
+        "recon",
+        "residual",
+    ]  # Add any other categories that require float precision
+
     # Create output directories for each category
     for category in categories:
         create_dir(os.path.join(output_dir, category))
@@ -94,21 +100,20 @@ def main():
                 base_filename = os.path.splitext(pth_file)[0]
                 image_filename = f"{base_filename}_{category}_{idx}"
 
-                if category == "residual":
-                    # Save residuals as TIFF with float data
+                if category in tiff_categories:
+                    # Save as TIFF with float data
                     img_np = tensor_to_numpy(img_tensor)
                     img_np = np.transpose(img_np, (1, 2, 0))  # Convert to HxWxC
-                    # Optionally, you can normalize or scale the residuals
-                    # For example, to fit into a certain range
-                    # Here, we save the raw float data
+                    # Save the float data using tifffile
                     tifffile.imwrite(
                         os.path.join(output_dir, category, f"{image_filename}.tiff"),
                         img_np,
                         dtype=img_np.dtype,
-                        compress=6,  # Adjust compression level as needed
+                        compression="zlib",
+                        compressionargs={"level": 8},
                     )
                 else:
-                    # Save clean and recon images as PNG
+                    # Save as PNG
                     pil_image = tensor_to_pil(img_tensor)
                     pil_image.save(
                         os.path.join(output_dir, category, f"{image_filename}.png")
