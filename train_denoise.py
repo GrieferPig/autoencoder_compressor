@@ -1,4 +1,5 @@
 import os
+import glob  # Added for checkpoint file handling
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -162,6 +163,7 @@ def main():
     train_size = math.ceil(0.8 * num_samples)
     val_size = math.ceil(0.1 * num_samples)
     test_size = num_samples - train_size - val_size
+    print(f"Train size: {train_size}, Val size: {val_size}, Test size: {test_size}")
     train_indices, val_indices, test_indices = random_split(
         indices,
         [train_size, val_size, test_size],
@@ -190,12 +192,50 @@ def main():
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
 
+    # Ensure the checkpoints directory exists
     os.makedirs("checkpoints", exist_ok=True)
 
+    # Initialize training parameters
     num_epochs = 20  # Adjust as needed
+    start_epoch = 1  # Default starting epoch
+
+    # Find all checkpoint files
+    checkpoint_files = glob.glob(os.path.join("checkpoints", "dncnn_epoch_*.pth"))
+    if checkpoint_files:
+        # Extract epoch numbers from filenames
+        epochs = []
+        for file in checkpoint_files:
+            basename = os.path.basename(file)
+            try:
+                epoch_num = int(basename.split("_")[2].split(".")[0])
+                epochs.append(epoch_num)
+            except (IndexError, ValueError):
+                continue
+        if epochs:
+            latest_epoch = max(epochs)
+            latest_checkpoint = os.path.join(
+                "checkpoints", f"dncnn_epoch_{latest_epoch}.pth"
+            )
+            print(f"Loading checkpoint from epoch {latest_epoch}...")
+            checkpoint = torch.load(latest_checkpoint, map_location=device)
+            model.load_state_dict(checkpoint["model_state_dict"])
+            optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+            start_epoch = checkpoint["epoch"] + 1
+            print(f"Resuming training from epoch {start_epoch}...")
+        else:
+            print("No valid checkpoint files found. Starting training from scratch.")
+    else:
+        print("No checkpoint files found. Starting training from scratch.")
+
+    # Adjust the range of epochs based on the starting epoch
+    if start_epoch > num_epochs:
+        print(
+            f"Checkpoint epoch ({start_epoch}) is greater than num_epochs ({num_epochs}). Exiting."
+        )
+        return
 
     # Wrap the epoch loop with tqdm
-    for epoch in tqdm(range(1, num_epochs + 1), desc="Training Epochs"):
+    for epoch in tqdm(range(start_epoch, num_epochs + 1), desc="Training Epochs"):
         model.train()
         running_loss = 0.0
 
@@ -231,6 +271,7 @@ def main():
             f"Epoch [{epoch}/{num_epochs}] Train Loss: {epoch_loss:.6f} Val Loss: {val_loss:.6f}"
         )
 
+        # Save checkpoints at specified intervals
         if epoch % 10 == 0 or epoch == num_epochs:
             checkpoint = {
                 "epoch": epoch,

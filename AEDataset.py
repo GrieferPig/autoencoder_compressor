@@ -81,6 +81,9 @@ class AEDataset(torch.utils.data.Dataset):
 def init_ae_dataset(
     dataset, length=None, indices=None, shuffle=True, process_on_demand=False
 ):
+    if isinstance(indices, str):
+        # split the string into a list of integers
+        indices = list(map(int, indices.split(",")))
     if isinstance(dataset, str):
         # If the dataset is a string, it is a path to a folder containing images
         print("Using custom dataset")

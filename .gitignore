@@ -1,3 +1,10 @@
 .legacy
 __pycache__
 results*
+
+# Added by cargo
+
+/target
+quantized_models
+
+**/target

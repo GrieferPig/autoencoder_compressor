@@ -273,7 +273,7 @@ def main():
             )
 
             # Load the trained AE model
-            model = load_autoenc_model(
+            model, _ = load_autoenc_model(
                 enc_layers=enc_layers,
                 img_set_size=img_set_size,
                 latent_dim=latent_dim,
@@ -282,7 +282,7 @@ def main():
 
             # Initialize dataset and dataloader
             if args.img_source:
-                base_dataset = load_dataset(args.img_source, split=DATASET_SPLIT)
+                base_dataset = args.img_source
             else:
                 base_dataset = load_dataset(DATASET_REPO, split=DATASET_SPLIT)
 
