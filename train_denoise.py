@@ -66,19 +66,11 @@ class DenoiseDataset(Dataset):
         clean_image = Image.open(clean_path).convert("RGB")
         recon_image = Image.open(recon_path).convert("RGB")
 
-        if self.transform:
-            clean_image = self.transform(clean_image)
-            recon_image = self.transform(recon_image)
-        else:
-            # Default transform: convert to tensor
-            transform = transforms.ToTensor()
-            clean_image = transform(clean_image)
-            recon_image = transform(recon_image)
+        transform = transforms.ToTensor()
+        clean_image = transform(clean_image)
+        recon_image = transform(recon_image)
 
-        # Compute residual
-        residual = recon_image - clean_image
-
-        return recon_image, clean_image, residual
+        return recon_image, clean_image
 
 
 def test_model(model, test_loader, criterion, epoch, device=DEVICE):
@@ -96,15 +88,15 @@ def test_model(model, test_loader, criterion, epoch, device=DEVICE):
     model.eval()
     test_loss = 0.0
     with torch.no_grad():
-        for recon, clean, residual in test_loader:
-            recon, residual = recon.to(device), residual.to(device)
+        for recon, clean in test_loader:
+            recon, clean = recon.to(device), clean.to(device)
             outputs = model(recon)
-            loss = criterion(outputs, residual)
+            loss = criterion(outputs, clean)
             if len(samples) < 5:
                 samples.append(
                     (
                         recon.squeeze().cpu(),
-                        (outputs + recon).squeeze().cpu(),
+                        outputs.squeeze().cpu(),
                         clean.squeeze().cpu(),
                     )
                 )
@@ -131,7 +123,7 @@ def test_model(model, test_loader, criterion, epoch, device=DEVICE):
 
 
 def main():
-    data_dir = os.path.join(SAVE_DIR_CKPT, "denoise_dataset")
+    data_dir = "F:\\denoise_image"
     clean_dir = os.path.join(data_dir, "clean")
     recon_dir = os.path.join(data_dir, "recon")
 
@@ -184,9 +176,9 @@ def main():
     test_set = torch.utils.data.Subset(full_dataset, test_indices)
 
     # Create DataLoaders
-    train_loader = DataLoader(train_set, batch_size=16, shuffle=True, num_workers=4)
-    val_loader = DataLoader(val_set, batch_size=16, shuffle=False, num_workers=4)
-    test_loader = DataLoader(test_set, batch_size=4, shuffle=False, num_workers=4)
+    train_loader = DataLoader(train_set, batch_size=2, shuffle=True)
+    val_loader = DataLoader(val_set, batch_size=2, shuffle=False)
+    test_loader = DataLoader(test_set, batch_size=2, shuffle=False)
 
     device = DEVICE
     print(f"Using device: {device}")
@@ -201,11 +193,11 @@ def main():
     for epoch in range(1, num_epochs + 1):
         model.train()
         running_loss = 0.0
-        for recon, _, residual in train_loader:
-            recon, residual = recon.to(device), residual.to(device)
+        for recon, clean in train_loader:
+            recon, clean = recon.to(device), clean.to(device)
             optimizer.zero_grad()
             outputs = model(recon)
-            loss = criterion(outputs, residual)
+            loss = criterion(outputs, clean)
             loss.backward()
             optimizer.step()
             running_loss += loss.item() * recon.size(0)
@@ -215,10 +207,10 @@ def main():
         model.eval()
         val_loss = 0.0
         with torch.no_grad():
-            for recon, _, residual in val_loader:
-                recon, residual = recon.to(device), residual.to(device)
+            for recon, clean in val_loader:
+                recon, clean = recon.to(device), clean.to(device)
                 outputs = model(recon)
-                loss = criterion(outputs, residual)
+                loss = criterion(outputs, clean)
                 val_loss += loss.item() * recon.size(0)
         val_loss /= len(val_loader.dataset)
 
