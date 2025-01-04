@@ -204,6 +204,10 @@ def calculate_psnr_ssim(original, reconstructed):
     original = original.cpu().numpy()
     reconstructed = reconstructed.cpu().detach().numpy()
 
+    # clamp to [0, 1]
+    original = np.clip(original, 0, 1)
+    reconstructed = np.clip(reconstructed, 0, 1)
+
     batch_size = original.shape[0]
     psnr_total = 0.0
     ssim_total = 0.0

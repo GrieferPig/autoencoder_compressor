@@ -4,6 +4,8 @@ from torchvision.utils import save_image
 from torchvision.transforms import ToPILImage
 from PIL import Image
 import argparse
+import numpy as np
+import tifffile
 
 
 def create_dir(path):
@@ -21,9 +23,16 @@ def tensor_to_pil(tensor):
     return pil_image
 
 
+def tensor_to_numpy(tensor):
+    """
+    Converts a torch tensor to a NumPy array.
+    """
+    return tensor.numpy()
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Convert .pth data chunks to PNG images."
+        description="Convert .pth data chunks to image files."
     )
     parser.add_argument(
         "--data_dir",
@@ -35,7 +44,7 @@ def main():
         "--output_dir",
         type=str,
         required=True,
-        help="Directory where the PNG images will be saved.",
+        help="Directory where the image files will be saved.",
     )
     parser.add_argument(
         "--categories",
@@ -81,15 +90,29 @@ def main():
             images = data[category]  # Tensor of shape (N, C, H, W)
             for idx in range(images.size(0)):
                 img_tensor = images[idx]
-                pil_image = tensor_to_pil(img_tensor)
 
-                # Define the filename
                 base_filename = os.path.splitext(pth_file)[0]
-                image_filename = f"{base_filename}_{category}_{idx}.png"
-                image_path = os.path.join(output_dir, category, image_filename)
+                image_filename = f"{base_filename}_{category}_{idx}"
 
-                # Save the image
-                pil_image.save(image_path)
+                if category == "residual":
+                    # Save residuals as TIFF with float data
+                    img_np = tensor_to_numpy(img_tensor)
+                    img_np = np.transpose(img_np, (1, 2, 0))  # Convert to HxWxC
+                    # Optionally, you can normalize or scale the residuals
+                    # For example, to fit into a certain range
+                    # Here, we save the raw float data
+                    tifffile.imwrite(
+                        os.path.join(output_dir, category, f"{image_filename}.tiff"),
+                        img_np,
+                        dtype=img_np.dtype,
+                        compress=6,  # Adjust compression level as needed
+                    )
+                else:
+                    # Save clean and recon images as PNG
+                    pil_image = tensor_to_pil(img_tensor)
+                    pil_image.save(
+                        os.path.join(output_dir, category, f"{image_filename}.png")
+                    )
 
         print(f"Finished processing {pth_file}.")
 
