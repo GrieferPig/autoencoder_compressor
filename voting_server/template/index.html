@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Image Comparison Evaluation</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 20px;
+        }
+
+        .image-container {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        .image-box {
+            margin: 0 20px;
+        }
+
+        img {
+            max-width: 400px;
+            height: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 5px;
+        }
+
+        .buttons {
+            margin-top: 20px;
+        }
+
+        .buttons form {
+            display: inline-block;
+            margin: 0 10px;
+        }
+
+        .stats {
+            margin-top: 30px;
+            font-size: 1.2em;
+        }
+
+        .finished {
+            color: green;
+            font-size: 1.5em;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Image Comparison Evaluation</h1>
+
+    {% if finished %}
+    <p class="finished">Evaluation Completed! Thank you for your participation.</p>
+    {% else %}
+    {% set base_name, clean, jpeg, recon = image_set %}
+    <div class="image-container">
+        <div class="image-box">
+            <h3>Original Image</h3>
+            <img src="{{ url_for('static', filename=clean.split('/')[-1]) }}" alt="Original Image">
+        </div>
+    </div>
+    <div class="image-container">
+        <div class="image-box">
+            <h3>JPEG Compression</h3>
+            <img src="{{ url_for('static', filename=jpeg.split('/')[-1]) }}" alt="JPEG Image">
+            <form action="{{ url_for('vote') }}" method="post">
+                <input type="hidden" name="choice" value="jpeg">
+                <button type="submit">Choose JPEG</button>
+            </form>
+        </div>
+        <div class="image-box">
+            <h3>Your Algorithm</h3>
+            <img src="{{ url_for('static', filename=recon.split('/')[-1]) }}" alt="Reconstructed Image">
+            <form action="{{ url_for('vote') }}" method="post">
+                <input type="hidden" name="choice" value="algorithm">
+                <button type="submit">Choose Your Algorithm</button>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="stats">
+        <p>Total Votes: {{ total_votes }}</p>
+        <p>JPEG Wins: {{ jpeg_wins }}</p>
+        <p>Your Algorithm Wins: {{ algorithm_wins }}</p>
+        {% if total_votes > 0 %}
+        <p>JPEG Win Rate: {{ "%.2f"|format((jpeg_wins / total_votes) * 100) }}%</p>
+        <p>Your Algorithm Win Rate: {{ "%.2f"|format((algorithm_wins / total_votes) * 100) }}%</p>
+        {% endif %}
+    </div>
+</body>
+
+</html>

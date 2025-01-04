@@ -4,80 +4,91 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader, random_split
 from DnCNN import DenoisingModel
-import math
-
 from config import SAVE_DIR_CKPT, DEVICE
+import math
 import random
 import matplotlib.pyplot as plt
+from PIL import Image
+from torchvision import transforms
 
 
 class DenoiseDataset(Dataset):
+    def __init__(self, clean_dir, recon_dir, transform=None):
+        """
+        Initializes the dataset by listing all image files in clean and recon directories.
 
-    def __init__(self, chunk_files, chunk_indices_range, indices):
+        Args:
+            clean_dir (str): Path to the directory containing clean images.
+            recon_dir (str): Path to the directory containing recon images.
+            transform (callable, optional): Optional transform to be applied on a sample.
         """
-        Initializes the dataset by mapping global indices to specific chunks and sample indices.
-        """
-        self.chunk_files = chunk_files
-        self.chunk_indices_range = chunk_indices_range
-        self.indices = indices
-        self.current_chunk = None
-        self.current_data = None
-        self.current_indice_range = None
-        self.load_chunk(0)
+        self.clean_dir = clean_dir
+        self.recon_dir = recon_dir
+        self.transform = transform
 
-    def load_chunk(self, chunk_idx):
-        """
-        Loads the specified chunk into memory.
-        """
-        if self.current_chunk != chunk_idx:
-            if self.current_data is not None:
-                del self.current_data
-            print(f"Loading chunk {chunk_idx}")
-            checkpoint = torch.load(
-                self.chunk_files[chunk_idx], map_location=DEVICE, weights_only=True
-            )
-            self.current_data = (
-                checkpoint["clean"],
-                checkpoint["recon"],
-                checkpoint["residual"],
-            )
-            self.current_chunk = chunk_idx
-            self.current_indice_range = self.chunk_indices_range[chunk_idx]
+        # List all PNG files in the clean directory
+        self.clean_files = sorted(
+            [f for f in os.listdir(clean_dir) if f.lower().endswith(".png")]
+        )
+        # List all PNG files in the recon directory
+        self.recon_files = sorted(
+            [f for f in os.listdir(recon_dir) if f.lower().endswith(".png")]
+        )
+
+        if len(self.clean_files) != len(self.recon_files):
+            raise ValueError("The number of clean and recon images must be the same.")
+
+        # Ensure that filenames match
+        for clean_file, recon_file in zip(self.clean_files, self.recon_files):
+            if clean_file != recon_file:
+                raise ValueError(f"Mismatched files: {clean_file} and {recon_file}")
 
     def __len__(self):
-        return len(self.indices)
+        return len(self.clean_files)
 
     def __getitem__(self, idx):
         """
-        Retrieves the recon and clean images for the given index.
+        Retrieves the recon and clean images for the given index and computes the residual.
+
+        Args:
+            idx (int): Index of the sample to retrieve.
+
+        Returns:
+            tuple: (recon_image, clean_image, residual)
         """
-        global_idx = self.indices[idx]
-        current_min, current_max = self.current_indice_range
-        if current_min <= global_idx < current_max:
-            return (
-                self.current_data[1][global_idx - current_min],
-                self.current_data[0][global_idx - current_min],
-                self.current_data[2][global_idx - current_min],
-            )
+        clean_path = os.path.join(self.clean_dir, self.clean_files[idx])
+        recon_path = os.path.join(self.recon_dir, self.recon_files[idx])
 
-        # find the min chunk index where the global index is less than the chunk index range
-        chunk_idx = next(
-            i
-            for i, (min_idx, max_idx) in enumerate(self.chunk_indices_range)
-            if global_idx < max_idx
-        )
-        self.load_chunk(chunk_idx)
-        current_min, current_max = self.current_indice_range
-        return (
-            self.current_data[1][global_idx - current_min],
-            self.current_data[0][global_idx - current_min],
-            self.current_data[2][global_idx - current_min],
-        )
+        # Load images
+        clean_image = Image.open(clean_path).convert("RGB")
+        recon_image = Image.open(recon_path).convert("RGB")
+
+        if self.transform:
+            clean_image = self.transform(clean_image)
+            recon_image = self.transform(recon_image)
+        else:
+            # Default transform: convert to tensor
+            transform = transforms.ToTensor()
+            clean_image = transform(clean_image)
+            recon_image = transform(recon_image)
+
+        # Compute residual
+        residual = recon_image - clean_image
+
+        return recon_image, clean_image, residual
 
 
-def test_model(model, test_loader, criterion, epochs, device=DEVICE):
-    # Test the model
-    # Select 4 images from the test set and plot them
+def test_model(model, test_loader, criterion, epoch, device=DEVICE):
+    """
+    Evaluates the model on the test set and saves sample denoised images.
+
+    Args:
+        model (nn.Module): The denoising model.
+        test_loader (DataLoader): DataLoader for the test set.
+        criterion (nn.Module): Loss function.
+        epoch (int): Current epoch number.
+        device (torch.device): Device to perform computations on.
+    """
     samples = []
     model.eval()
     test_loss = 0.0
@@ -98,43 +109,45 @@ def test_model(model, test_loader, criterion, epochs, device=DEVICE):
     test_loss /= len(test_loader.dataset)
 
     fig, axes = plt.subplots(4, 3, figsize=(12, 12))
-    for i, (recon, output, clean) in enumerate(samples):
-        axes[i, 0].imshow(recon.permute(1, 2, 0).numpy())
+    for i, (recon_img, denoised_img, clean_img) in enumerate(samples):
+        axes[i, 0].imshow(recon_img.permute(1, 2, 0).numpy())
         axes[i, 0].set_title("Noisy")
         axes[i, 0].axis("off")
 
-        axes[i, 1].imshow(output.permute(1, 2, 0).numpy())
+        axes[i, 1].imshow(denoised_img.permute(1, 2, 0).numpy())
         axes[i, 1].set_title("Denoised")
         axes[i, 1].axis("off")
 
-        axes[i, 2].imshow(clean.permute(1, 2, 0).numpy())
+        axes[i, 2].imshow(clean_img.permute(1, 2, 0).numpy())
         axes[i, 2].set_title("Clean")
         axes[i, 2].axis("off")
 
     plt.tight_layout()
-    plt.savefig(f"test_results_{epochs}.png")
+    plt.savefig(f"test_results_epoch_{epoch}.png")
+    plt.close()
 
 
 def main():
     data_dir = os.path.join(SAVE_DIR_CKPT, "denoise_dataset")
-    if not os.path.isdir(data_dir):
-        raise FileNotFoundError(f"Data directory {data_dir} does not exist.")
+    clean_dir = os.path.join(data_dir, "clean")
+    recon_dir = os.path.join(data_dir, "recon")
 
-    # Calculate the total number of samples
-    num_samples = 0
-    chunk_files = []
-    chunk_indices_range = []
-    for f in os.listdir(data_dir):
-        if f.startswith("dataset_") and f.endswith(".pth"):
-            filename = os.path.join(data_dir, f)
-            print(f"Loading {filename}")
-            checkpoint = torch.load(filename, map_location="cpu", weights_only=True)
-            chunk_files.append(filename)
-            chunk_indices_range.append(
-                (num_samples, num_samples + len(checkpoint["clean"]))
-            )
-            num_samples += len(checkpoint["clean"])
-            del checkpoint
+    if not os.path.isdir(clean_dir) or not os.path.isdir(recon_dir):
+        raise FileNotFoundError(
+            f"One or both data directories {clean_dir}, {recon_dir} do not exist."
+        )
+
+    # Define transformations (if any)
+    transform = transforms.Compose(
+        [
+            transforms.ToTensor(),
+            # Add other transformations here if needed
+        ]
+    )
+
+    # Instantiate the dataset
+    full_dataset = DenoiseDataset(clean_dir, recon_dir, transform=transform)
+    num_samples = len(full_dataset)
 
     if num_samples == 0:
         raise ValueError("No samples found in the dataset.")
@@ -144,33 +157,33 @@ def main():
     # Create a list of global indices
     indices = list(range(num_samples))
 
+    # Shuffle indices before splitting
+    random.shuffle(indices)
+
     # Split the indices into train, val, and test sets
     train_size = math.ceil(0.8 * num_samples)
     val_size = math.ceil(0.1 * num_samples)
     test_size = num_samples - train_size - val_size
-    train_subset, val_subset, test_subset = random_split(
-        indices, [train_size, val_size, test_size]
+    train_indices, val_indices, test_indices = random_split(
+        indices,
+        [train_size, val_size, test_size],
+        generator=torch.Generator().manual_seed(42),  # For reproducibility
     )
 
     # Convert Subset objects to lists
-    train_indices = list(train_subset)
-    val_indices = list(val_subset)
-    test_indices = list(test_subset)
+    train_indices = list(train_indices)
+    val_indices = list(val_indices)
+    test_indices = list(test_indices)
 
-    # sort the indices to decrease the number of chunk loads
-    train_indices = sorted(train_indices)
-    val_indices = sorted(val_indices)
-    test_indices = sorted(test_indices)
-
-    # Instantiate datasets
-    train_set = DenoiseDataset(chunk_files, chunk_indices_range, train_indices)
-    val_set = DenoiseDataset(chunk_files, chunk_indices_range, val_indices)
-    test_set = DenoiseDataset(chunk_files, chunk_indices_range, test_indices)
+    # Instantiate subsets
+    train_set = torch.utils.data.Subset(full_dataset, train_indices)
+    val_set = torch.utils.data.Subset(full_dataset, val_indices)
+    test_set = torch.utils.data.Subset(full_dataset, test_indices)
 
     # Create DataLoaders
-    train_loader = DataLoader(train_set, batch_size=2)
-    val_loader = DataLoader(val_set, batch_size=2)
-    test_loader = DataLoader(test_set, batch_size=1)
+    train_loader = DataLoader(train_set, batch_size=16, shuffle=True, num_workers=4)
+    val_loader = DataLoader(val_set, batch_size=16, shuffle=False, num_workers=4)
+    test_loader = DataLoader(test_set, batch_size=4, shuffle=False, num_workers=4)
 
     device = DEVICE
     print(f"Using device: {device}")
@@ -181,7 +194,8 @@ def main():
 
     os.makedirs("checkpoints", exist_ok=True)
 
-    for epoch in range(1, 20):
+    num_epochs = 20  # Adjust as needed
+    for epoch in range(1, num_epochs + 1):
         model.train()
         running_loss = 0.0
         for recon, _, residual in train_loader:
@@ -198,7 +212,7 @@ def main():
         model.eval()
         val_loss = 0.0
         with torch.no_grad():
-            for recon, _, residual in train_loader:
+            for recon, _, residual in val_loader:
                 recon, residual = recon.to(device), residual.to(device)
                 outputs = model(recon)
                 loss = criterion(outputs, residual)
@@ -206,10 +220,10 @@ def main():
         val_loss /= len(val_loader.dataset)
 
         print(
-            f"Epoch [{epoch}/500] Train Loss: {epoch_loss:.6f} Val Loss: {val_loss:.6f}"
+            f"Epoch [{epoch}/{num_epochs}] Train Loss: {epoch_loss:.6f} Val Loss: {val_loss:.6f}"
         )
 
-        if epoch % 10 == 0:
+        if epoch % 10 == 0 or epoch == num_epochs:
             checkpoint = {
                 "epoch": epoch,
                 "model_state_dict": model.state_dict(),
@@ -223,7 +237,9 @@ def main():
             test_model(model, test_loader, criterion, epoch)
 
     # Save the final model
-    torch.save(model.state_dict(), "dncnn_final.pth")
+    final_model_path = "dncnn_final.pth"
+    torch.save(model.state_dict(), final_model_path)
+    print(f"Final model saved at {final_model_path}")
 
 
 if __name__ == "__main__":
