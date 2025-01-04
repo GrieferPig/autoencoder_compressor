@@ -158,12 +158,15 @@ def save_denoise_model(
 
 def load_denoise_model(
     gaussian_noise_model=False,
+    generic_model=False,
     enc_layers=None,
     img_set_size=None,
     latent_dim=None,
     load_optimizer=False,
 ):
-    if gaussian_noise_model:
+    if generic_model:
+        checkpoint_path = "./dncnn_final.pth"
+    elif gaussian_noise_model:
         checkpoint_path = f"{SAVE_DIR_DENOISE_CKPT}/{SAVE_FILENAME_GAUSSIAN}"
     elif enc_layers and img_set_size and latent_dim:
         checkpoint_path = f"{SAVE_DIR_DENOISE_CKPT}/dncnn_final_{enc_layers}_{img_set_size}_{latent_dim}.pth"
@@ -173,7 +176,11 @@ def load_denoise_model(
     print(f"Loading denoiser model from {checkpoint_path}")
     checkpoint = torch.load(checkpoint_path, map_location=DEVICE)
     model = DenoisingModel().to(DEVICE)
-    model.load_state_dict(checkpoint["model_state_dict"])
+    if generic_model:
+        checkpoint = checkpoint
+    else:
+        checkpoint = checkpoint["model_state_dict"]
+    model.load_state_dict(checkpoint)
     if load_optimizer:
         optimizer = torch.optim.Adam(model.parameters(), lr=LR_DENOISE)
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])

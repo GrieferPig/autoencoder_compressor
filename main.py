@@ -108,6 +108,8 @@ def main():
     parser.add_argument(
         "--decoder", action="store_true", help="Get decoder size instead of full model"
     )
+    parser.add_argument("--img-source", type=str, default=None, help="Image source")
+    parser.add_argument("--generic", action="store_true", help="Load generic model")
 
     args = parser.parse_args()
     enc_config_str = None
@@ -155,7 +157,10 @@ def main():
                 print("Actually, forget about the epochs, we train until convergence!")
 
             # Initialize base dataset
-            base_dataset = load_dataset(DATASET_REPO, split=DATASET_SPLIT)
+            if args.img_source:
+                base_dataset = args.img_source
+            else:
+                base_dataset = load_dataset(DATASET_REPO, split=DATASET_SPLIT)
 
             # Initialize dataset and dataloader
             dataset, dataloader = init_ae_dataset(
@@ -276,7 +281,11 @@ def main():
             )
 
             # Initialize dataset and dataloader
-            base_dataset = load_dataset(DATASET_REPO, split=DATASET_SPLIT)
+            if args.img_source:
+                base_dataset = load_dataset(args.img_source, split=DATASET_SPLIT)
+            else:
+                base_dataset = load_dataset(DATASET_REPO, split=DATASET_SPLIT)
+
             dataset, dataloader = init_ae_dataset(
                 base_dataset, img_set_size, indices=args.indices, shuffle=False
             )
@@ -334,13 +343,17 @@ def main():
                 indices = [ae_indices[int(i)] for i in indices]
                 model = load_denoise_model(
                     gaussian_noise_model=False,
+                    generic_model=args.generic,
                     enc_layers=use_enc_layers,
                     img_set_size=use_img_set_size,
                     latent_dim=use_latent_dim,
                     load_optimizer=False,
                 )
 
-                base_dataset = load_dataset(DATASET_REPO, split=DATASET_SPLIT)
+                if args.img_source:
+                    base_dataset = load_dataset(args.img_source, split=DATASET_SPLIT)
+                else:
+                    base_dataset = load_dataset(DATASET_REPO, split=DATASET_SPLIT)
                 dataset = DenoisingDataset(
                     base_dataset,
                     source_ae_model,

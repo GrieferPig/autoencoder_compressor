@@ -95,32 +95,35 @@ def train_ae_model(
                 epoch_loss += loss.item()
 
             avg_loss = epoch_loss / len(dataloader)
-            last_100_loss[epoch % 100] = avg_loss
+            if till_convergence:
+                last_100_loss[epoch % 100] = avg_loss
             overview_loss[epoch] = avg_loss
             tepochs.set_postfix(loss=f"{avg_loss*100:.4f} %")
-            if (epoch + 1) % 100 == 0 and till_convergence:
-                # do linear regression on last 100 losses
-                # test if the slope is less than 0.01
-                x = np.arange(len(last_100_loss)).reshape(-1, 1)
-                y = np.array(last_100_loss).reshape(-1, 1)
-                reg = LinearRegression().fit(x, y)
-                slope = abs(reg.coef_[0][0])
+            if (epoch + 1) % 100 == 0:
+                if till_convergence:
+                    # do linear regression on last 100 losses
+                    # test if the slope is less than 0.01
+                    x = np.arange(len(last_100_loss)).reshape(-1, 1)
+                    y = np.array(last_100_loss).reshape(-1, 1)
+                    reg = LinearRegression().fit(x, y)
+                    slope = abs(reg.coef_[0][0])
                 # also test if ssim is within +-0.01 of last ssim
                 _, avg_psnr, avg_ssim = inference_ae_model(model, dataloader)
                 overview_psnr[epoch // 100] = avg_psnr
                 overview_ssim[epoch // 100] = avg_ssim
-                if (
-                    abs(avg_ssim - last_ssim) < 0.005
-                    and slope < 5e-6
-                    and epoch > patience
-                ):
-                    print(
-                        f"break at absolute ssim diff: {abs(avg_ssim - last_ssim)}, slope: {slope}"
-                    )
-                    break
+                if till_convergence:
+                    if (
+                        abs(avg_ssim - last_ssim) < 0.005
+                        and slope < 5e-6
+                        and epoch > patience
+                    ):
+                        print(
+                            f"break at absolute ssim diff: {abs(avg_ssim - last_ssim)}, slope: {slope}"
+                        )
+                        break
 
-                last_ssim = avg_ssim
-                last_100_loss = np.empty(100)
+                    last_ssim = avg_ssim
+                    last_100_loss = np.empty(100)
 
             # Save the model checkpoint every SAVE_PER_EPOCH_DENOISE
             if (epoch + 1) % SAVE_PER_EPOCH_AE == 0:
@@ -150,15 +153,14 @@ def train_ae_model(
     )
 
     # store trend of loss, psnr and ssim
-    if till_convergence:
-        torch.save(
-            {
-                "loss": overview_loss,
-                "psnr": overview_psnr,
-                "ssim": overview_ssim,
-            },
-            f"{SAVE_DIR}/trend_{ENC_LAYERS}_{IMG_SET_SIZE}_{LATENT_DIM}.pth",
-        )
+    torch.save(
+        {
+            "loss": overview_loss,
+            "psnr": overview_psnr,
+            "ssim": overview_ssim,
+        },
+        f"{SAVE_DIR}/trend_{ENC_LAYERS}_{IMG_SET_SIZE}_{LATENT_DIM}.pth",
+    )
 
     return model, avg_loss
 
