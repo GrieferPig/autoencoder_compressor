@@ -10,6 +10,7 @@ import random
 import matplotlib.pyplot as plt
 from PIL import Image
 from torchvision import transforms
+from tqdm import tqdm  # Import tqdm
 
 
 class DenoiseDataset(Dataset):
@@ -88,7 +89,9 @@ def test_model(model, test_loader, criterion, epoch, device=DEVICE):
     model.eval()
     test_loss = 0.0
     with torch.no_grad():
-        for recon, clean in test_loader:
+        for recon, clean in tqdm(
+            test_loader, desc=f"Epoch {epoch} - Testing", leave=False
+        ):
             recon, clean = recon.to(device), clean.to(device)
             outputs = model(recon)
             loss = criterion(outputs, clean)
@@ -123,7 +126,7 @@ def test_model(model, test_loader, criterion, epoch, device=DEVICE):
 
 
 def main():
-    data_dir = "F:\\denoise_image"
+    data_dir = "F:\\denoise_images"
     clean_dir = os.path.join(data_dir, "clean")
     recon_dir = os.path.join(data_dir, "recon")
 
@@ -190,10 +193,16 @@ def main():
     os.makedirs("checkpoints", exist_ok=True)
 
     num_epochs = 20  # Adjust as needed
-    for epoch in range(1, num_epochs + 1):
+
+    # Wrap the epoch loop with tqdm
+    for epoch in tqdm(range(1, num_epochs + 1), desc="Training Epochs"):
         model.train()
         running_loss = 0.0
-        for recon, clean in train_loader:
+
+        # Wrap the training batch loop with tqdm
+        for recon, clean in tqdm(
+            train_loader, desc=f"Epoch {epoch}/{num_epochs} - Training", leave=False
+        ):
             recon, clean = recon.to(device), clean.to(device)
             optimizer.zero_grad()
             outputs = model(recon)
@@ -201,20 +210,24 @@ def main():
             loss.backward()
             optimizer.step()
             running_loss += loss.item() * recon.size(0)
+
         epoch_loss = running_loss / len(train_loader.dataset)
 
         # Validation
         model.eval()
         val_loss = 0.0
-        with torch.no_grad():
-            for recon, clean in val_loader:
-                recon, clean = recon.to(device), clean.to(device)
-                outputs = model(recon)
-                loss = criterion(outputs, clean)
-                val_loss += loss.item() * recon.size(0)
+
+        # Wrap the validation batch loop with tqdm
+        for recon, clean in tqdm(
+            val_loader, desc=f"Epoch {epoch}/{num_epochs} - Validation", leave=False
+        ):
+            recon, clean = recon.to(device), clean.to(device)
+            outputs = model(recon)
+            loss = criterion(outputs, clean)
+            val_loss += loss.item() * recon.size(0)
         val_loss /= len(val_loader.dataset)
 
-        print(
+        tqdm.write(
             f"Epoch [{epoch}/{num_epochs}] Train Loss: {epoch_loss:.6f} Val Loss: {val_loss:.6f}"
         )
 
