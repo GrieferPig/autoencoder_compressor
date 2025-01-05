@@ -8,3 +8,5 @@ results*
 quantized_models
 
 **/target
+
+checkpoints
