@@ -180,3 +180,33 @@ class AECustomDataset(torch.utils.data.Dataset):
         if self.process_on_demand:
             return self._preprocess_one_image(idx)
         return self.preprocessed_data[idx]
+
+
+class AEDecoderDataset(torch.utils.data.Dataset):
+
+    def __init__(
+        self,
+        aedataset,
+        embedding_size,
+        model,
+        device=DEVICE,
+    ):
+        self.model = model.to(device)
+        self.aedataset = aedataset
+        self.device = device
+        self._embeddings = torch.zeros(len(aedataset), embedding_size)
+        for idx in range(len(aedataset)):
+            self._embeddings[idx] = self._inference(model, aedataset[idx].unsqueeze(0))
+
+    def _inference(self, model, image):
+        with torch.no_grad():
+            image = image.to(self.device)
+            embedding = model.encoder(image)
+            print(embedding.shape)
+        return embedding
+
+    def __len__(self):
+        return len(self.aedataset)
+
+    def __getitem__(self, idx):
+        return self._embeddings[idx]

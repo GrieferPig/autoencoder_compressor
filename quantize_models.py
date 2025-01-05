@@ -1,13 +1,19 @@
+import numpy as np
 import torch
+from AEDataset import AEDecoderDataset, init_ae_dataset
 from Autoencoder import Autoencoder
 from Autoencoder_quant import QuantizedAutoencoder
-from config import ENC_IO_SIZE
+from config import DATASET_REPO, DATASET_SPLIT, ENC_IO_SIZE
 import torch.nn as nn
 import os
 from torch.utils.data import DataLoader, TensorDataset
+from datasets import load_dataset
+import onnxruntime as ort
+from onnxruntime import quantization
 
 # Path to the model
 model_path = "./results-imgnet/ckpt/final/ae_2_64_16.pth"
+model_size = "small"
 (enc_layers, img_set_size, latent_dim) = (
     model_path.split("/")[-1].split(".")[0].split("_")[1:4]
 )
@@ -17,21 +23,17 @@ model_name = model_path.split("/")[-1].split(".")[0]
 model = Autoencoder(
     image_size=ENC_IO_SIZE, num_layers=int(enc_layers), latent_dim=int(latent_dim)
 )
-model_float16 = QuantizedAutoencoder(
-    image_size=ENC_IO_SIZE, num_layers=int(enc_layers), latent_dim=int(latent_dim)
-)
-model.load_state_dict(torch.load(model_path, map_location="cpu")["model_state_dict"])
-model_float16.load_state_dict(
-    torch.load(model_path, map_location="cpu")["model_state_dict"]
-)
+ckpt = torch.load(model_path, map_location="cpu")
+indices = ckpt["indices"]
+model.load_state_dict(ckpt["model_state_dict"])
 model.eval()
-model_float16.eval()
 
 dummy_input = torch.randn(1, 16)
+normal_model = f"./quantized_models/{model_size}.onnx"
 torch.onnx.export(
     model.decoder,
     dummy_input,
-    "./quantized_models/autoencoder.onnx",
+    normal_model,
     input_names=["input"],
     output_names=["output"],
 )
@@ -39,15 +41,69 @@ torch.onnx.export(
 if not os.path.exists("./quantized_models"):
     os.makedirs("./quantized_models")
 
+base_dataset = load_dataset(DATASET_REPO, split=DATASET_SPLIT)
+calib_dataset, calib_loader = init_ae_dataset(base_dataset, indices=indices)
 
-# Perform float16 quantization
-model_float16 = model.to(torch.float16)
+embeddings_dataset = AEDecoderDataset(calib_dataset, int(latent_dim), model, "cpu")
 
-# export the quantized int8 and float16 model and the original model as onnx
-torch.onnx.export(
-    model_float16.decoder,
-    dummy_input.to(torch.float16),
-    "./quantized_models/autoencoder_float16.onnx",
-    input_names=["input"],
-    output_names=["output"],
+
+def to_numpy(tensor):
+    return (
+        tensor.detach().cpu().numpy() if tensor.requires_grad else tensor.cpu().numpy()
+    )
+
+
+ort_provider = ["CPUExecutionProvider"]
+
+ort_sess = ort.InferenceSession(normal_model, providers=ort_provider)
+
+model_prep_path = "resnet18_prep.onnx"
+
+quantization.shape_inference.quant_pre_process(
+    normal_model, model_prep_path, skip_symbolic_shape=True
+)
+
+
+class QuntizationDataReader(quantization.CalibrationDataReader):
+    def __init__(self, torch_ds, batch_size, input_name):
+
+        self.torch_dl = torch.utils.data.DataLoader(
+            torch_ds, batch_size=batch_size, shuffle=False
+        )
+
+        self.input_name = input_name
+        self.datasize = len(self.torch_dl)
+
+        self.enum_data = iter(self.torch_dl)
+
+    def to_numpy(self, pt_tensor):
+        return (
+            pt_tensor.detach().cpu().numpy()
+            if pt_tensor.requires_grad
+            else pt_tensor.cpu().numpy()
+        )
+
+    def get_next(self):
+        batch = next(self.enum_data, None)
+        if batch is not None:
+            return {self.input_name: np.expand_dims(self.to_numpy(batch[0]), axis=0)}
+        else:
+            return None
+
+    def rewind(self):
+        self.enum_data = iter(self.torch_dl)
+
+
+qdr = QuntizationDataReader(
+    embeddings_dataset, batch_size=64, input_name=ort_sess.get_inputs()[0].name
+)
+
+q_static_opts = {"ActivationSymmetric": True, "WeightSymmetric": True}
+
+model_int8_path = f"./quantized_models/{model_size}_int8.onnx"
+quantized_model = quantization.quantize_static(
+    model_input=model_prep_path,
+    model_output=model_int8_path,
+    calibration_data_reader=qdr,
+    extra_options=q_static_opts,
 )

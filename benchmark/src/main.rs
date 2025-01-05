@@ -67,7 +67,7 @@ fn main() {
         Err(err) => eprintln!("Error processing JPEG images: {}", err),
     }
 
-    let model_path_recon = ["./models/small.onnx", "./models/small_f16.onnx"];
+    let model_path_recon = ["./models/small.onnx", "./models/small_int8.onnx"];
     let model_path_denoise = "./models/denoiser.onnx";
 
     // convert to cwd + model_path
