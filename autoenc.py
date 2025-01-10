@@ -113,8 +113,8 @@ def train_ae_model(
                 overview_ssim[epoch // 100] = avg_ssim
                 if till_convergence:
                     if (
-                        abs(avg_ssim - last_ssim) < 0.005
-                        and slope < 5e-6
+                        abs(avg_ssim - last_ssim) < 0.001
+                        and slope < 1e-6
                         and epoch > patience
                     ):
                         print(

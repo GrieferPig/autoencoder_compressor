@@ -11,6 +11,7 @@ Command-line interface supporting commands like:
 
 import argparse
 import sys
+from Autoencoder import Autoencoder
 from config import *
 from autoenc import (
     train_ae_model,
@@ -110,6 +111,7 @@ def main():
     )
     parser.add_argument("--img-source", type=str, default=None, help="Image source")
     parser.add_argument("--generic", action="store_true", help="Load generic model")
+    parser.add_argument("--model", type=str, default=None, help="Real Model path")
 
     args = parser.parse_args()
     enc_config_str = None
@@ -272,13 +274,22 @@ def main():
                 f"indices={args.indices}"
             )
 
-            # Load the trained AE model
-            model, _ = load_autoenc_model(
-                enc_layers=enc_layers,
-                img_set_size=img_set_size,
-                latent_dim=latent_dim,
-                load_optimizer=False,
-            )
+            if args.model:
+                model_path = args.model
+                model = Autoencoder(
+                    image_size=ENC_IO_SIZE,
+                    num_layers=enc_layers,
+                    latent_dim=latent_dim,
+                )
+                model.load_state_dict(torch.load(model_path))
+            else:
+                # Load the trained AE model
+                model, _ = load_autoenc_model(
+                    enc_layers=enc_layers,
+                    img_set_size=img_set_size,
+                    latent_dim=latent_dim,
+                    load_optimizer=False,
+                )
 
             # Initialize dataset and dataloader
             if args.img_source:
@@ -422,7 +433,27 @@ def main():
                 )
                 sys.exit(1)
 
-        print(f"AE model size: {model_size:.4f} MB")
+        theoritical_uncomp_size = ENC_IO_SIZE * ENC_IO_SIZE * 3  # rgb888
+        # print in both bytes and kb
+        print(f"AE model size: {model_size} Bytes, {model_size / 1024:.4f} KB")
+        print(
+            f"Per-image AE size: {model_size / img_set_size:.4f} Bytes, {model_size / img_set_size / 1024:.4f} KB"
+        )
+        # also calculate dim size by latent_dim * img_set_size * 4 (float32)
+        dim_size = latent_dim * 4
+        print(f"Per-dim size: {dim_size} Bytes, {dim_size / 1024:.4f} KB")
+        print(
+            f"Per-dim size for {img_set_size} images: {dim_size * img_set_size} Bytes, {dim_size * img_set_size / 1024:.4f} KB"
+        )
+        print(
+            f"Total size for {img_set_size} images: {model_size + dim_size * img_set_size} Bytes, {(model_size + dim_size * img_set_size) / 1024:.4f} KB"
+        )
+        print(
+            f"Total per-image size: {(model_size + dim_size * img_set_size) / img_set_size:.4f} Bytes, {(model_size + dim_size * img_set_size) / img_set_size / 1024:.4f} KB"
+        )
+        print(
+            f"Uncompressed image size: {theoritical_uncomp_size} Bytes, Compression ratio: {((model_size + dim_size * img_set_size) / img_set_size)/theoritical_uncomp_size:.4f}"
+        )
 
 
 if __name__ == "__main__":

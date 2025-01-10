@@ -1,4 +1,3 @@
-use ndarray::array;
 use ndarray::{Array, Array2};
 use rand::distributions::Uniform;
 use rand::prelude::*;

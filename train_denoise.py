@@ -109,15 +109,15 @@ def test_model(model, test_loader, criterion, epoch, device=DEVICE):
 
     fig, axes = plt.subplots(4, 3, figsize=(12, 12))
     for i, (recon_img, denoised_img, clean_img) in enumerate(samples):
-        axes[i, 0].imshow(recon_img.permute(1, 2, 0).numpy())
+        axes[i, 0].imshow(recon_img.squeeze(0).permute(1, 2, 0).numpy())
         axes[i, 0].set_title("Noisy")
         axes[i, 0].axis("off")
 
-        axes[i, 1].imshow(denoised_img.permute(1, 2, 0).numpy())
+        axes[i, 1].imshow(denoised_img.squeeze(0).permute(1, 2, 0).numpy())
         axes[i, 1].set_title("Denoised")
         axes[i, 1].axis("off")
 
-        axes[i, 2].imshow(clean_img.permute(1, 2, 0).numpy())
+        axes[i, 2].imshow(clean_img.squeeze(0).permute(1, 2, 0).numpy())
         axes[i, 2].set_title("Clean")
         axes[i, 2].axis("off")
 
@@ -127,7 +127,7 @@ def test_model(model, test_loader, criterion, epoch, device=DEVICE):
 
 
 def main():
-    data_dir = "F:\\denoise_images"
+    data_dir = "C:\\Users\\evanl\\Downloads\\subset"
     clean_dir = os.path.join(data_dir, "clean")
     recon_dir = os.path.join(data_dir, "recon")
 
@@ -183,7 +183,7 @@ def main():
     # Create DataLoaders
     train_loader = DataLoader(train_set, batch_size=2, shuffle=True)
     val_loader = DataLoader(val_set, batch_size=2, shuffle=False)
-    test_loader = DataLoader(test_set, batch_size=2, shuffle=False)
+    test_loader = DataLoader(test_set, batch_size=1, shuffle=False)
 
     device = DEVICE
     print(f"Using device: {device}")
@@ -196,7 +196,7 @@ def main():
     os.makedirs("checkpoints", exist_ok=True)
 
     # Initialize training parameters
-    num_epochs = 20  # Adjust as needed
+    num_epochs = 101  # Adjust as needed
     start_epoch = 1  # Default starting epoch
 
     # Find all checkpoint files

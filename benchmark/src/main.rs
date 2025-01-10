@@ -43,7 +43,7 @@ fn calculate_stats(latencies: &Vec<(PathBuf, Duration, Duration)>) {
 /// Main program entry point
 fn main() {
     // Warmup the CPU cache with matrix multiplication
-    warmup(0);
+    warmup(10);
 
     let folder = "./images";
 
@@ -67,17 +67,24 @@ fn main() {
         Err(err) => eprintln!("Error processing JPEG images: {}", err),
     }
 
-    let model_path_recon = ["./models/small.onnx", "./models/small_int8.onnx"];
-    let model_path_denoise = "./models/denoiser.onnx";
+    let model_recon = [
+        ("./models/small.onnx", 64, 16),
+        ("./models/base.onnx", 256, 32),
+        ("./models/large.onnx", 1024, 64),
+        ("./models/small_int8.onnx", 64, 16),
+        ("./models/base_int8.onnx", 256, 32),
+        ("./models/large_int8.onnx", 1024, 64),
+    ];
+    let model_path_denoise = "./models/dncnn.onnx";
 
     // convert to cwd + model_path
-    let model_path_recon: Vec<String> = model_path_recon
+    let model_path_recon: Vec<String> = model_recon
         .iter()
         .map(|x| {
             format!(
                 "{}/{}",
                 std::env::current_dir().unwrap().to_str().unwrap(),
-                x
+                x.0
             )
         })
         .collect();
@@ -87,11 +94,11 @@ fn main() {
         model_path_denoise
     );
 
-    for model in &model_path_recon {
+    for i in 0..model_path_recon.len() {
         // Reconstruct images using the ONNX decoder model
-        match reconstruct_images(model) {
+        match reconstruct_images(&model_path_recon[i], model_recon[i].1, model_recon[i].2) {
             Ok(latencies) => {
-                println!("\nONNX Model Inference Results:");
+                println!("\nONNX Model Inference Results: {}", model_path_recon[i]);
                 calculate_stats(&latencies);
             }
             Err(err) => eprintln!("Error processing ONNX model: {}", err),

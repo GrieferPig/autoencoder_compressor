@@ -10,13 +10,15 @@ from torch.utils.data import DataLoader, TensorDataset
 from datasets import load_dataset
 import onnxruntime as ort
 from onnxruntime import quantization
+from DnCNN import DenoisingModel
 
 # Path to the model
-model_path = "./results-imgnet/ckpt/final/ae_2_64_16.pth"
-model_size = "small"
+model_path = "./results-imgnet/ckpt/final/ae_2_256_32.pth"
+model_size = "base"
 (enc_layers, img_set_size, latent_dim) = (
     model_path.split("/")[-1].split(".")[0].split("_")[1:4]
 )
+print(latent_dim)
 model_name = model_path.split("/")[-1].split(".")[0]
 
 # Load the model
@@ -28,8 +30,8 @@ indices = ckpt["indices"]
 model.load_state_dict(ckpt["model_state_dict"])
 model.eval()
 
-dummy_input = torch.randn(1, 16)
-normal_model = f"./quantized_models/{model_size}.onnx"
+dummy_input = torch.randn(1, int(latent_dim))
+normal_model = f"./benchmark/models/{model_size}.onnx"
 torch.onnx.export(
     model.decoder,
     dummy_input,
@@ -38,8 +40,8 @@ torch.onnx.export(
     output_names=["output"],
 )
 
-if not os.path.exists("./quantized_models"):
-    os.makedirs("./quantized_models")
+if not os.path.exists("./benchmark/models"):
+    os.makedirs("./benchmark/models")
 
 base_dataset = load_dataset(DATASET_REPO, split=DATASET_SPLIT)
 calib_dataset, calib_loader = init_ae_dataset(base_dataset, indices=indices)
@@ -100,10 +102,31 @@ qdr = QuntizationDataReader(
 
 q_static_opts = {"ActivationSymmetric": True, "WeightSymmetric": True}
 
-model_int8_path = f"./quantized_models/{model_size}_int8.onnx"
+model_int8_path = f"./benchmark/models/{model_size}_int8.onnx"
 quantized_model = quantization.quantize_static(
     model_input=model_prep_path,
     model_output=model_int8_path,
     calibration_data_reader=qdr,
     extra_options=q_static_opts,
 )
+
+
+# export denoise model
+# model_path = "./dncnn_final.pth"
+
+# model = DenoisingModel()
+
+# ckpt = torch.load(model_path, map_location="cpu")
+# print(ckpt)
+# model.load_state_dict(ckpt)
+# model.eval()
+
+# dummy_input = torch.randn(1, 3, 256, 256)
+# normal_model = f"./benchmark/models/dncnn.onnx"
+# torch.onnx.export(
+#     model,
+#     dummy_input,
+#     normal_model,
+#     input_names=["input"],
+#     output_names=["output"],
+# )

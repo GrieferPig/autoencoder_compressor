@@ -245,12 +245,10 @@ def get_model_size(model):
     # Get the file size in bytes
     file_size_bytes = os.path.getsize(checkpoint_path)
 
-    file_size_mib = file_size_bytes / (1024**2)  # MiB
-
     # Remove the temporary file
     os.remove(checkpoint_path)
 
-    return file_size_mib
+    return file_size_bytes
 
 
 # def run_automated_experiments():

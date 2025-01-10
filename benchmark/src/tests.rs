@@ -1,5 +1,5 @@
 use image::{ImageError, ImageFormat};
-use ndarray::Array2;
+use ndarray::{Array2, Array4};
 use ort::session::Session;
 use std::fs;
 use std::path::PathBuf;
@@ -70,8 +70,9 @@ pub fn decompress_jpeg(folder: &str) -> Result<Vec<(PathBuf, Duration, Duration)
 /// Function to reconstruct images using the ONNX decoder model.
 pub fn reconstruct_images(
     model_path: &str,
+    input_size: usize,
+    latent_dim_size: usize,
 ) -> Result<Vec<(PathBuf, Duration, Duration)>, Box<dyn std::error::Error>> {
-    let f16 = model_path.contains("f16");
     let mut latencies = Vec::new();
 
     // Measure the time to load latent space into tensor
@@ -81,13 +82,10 @@ pub fn reconstruct_images(
         .with_intra_threads(4)?
         .commit_from_file(model_path)?;
 
-    // Example latent spaces (256 vectors of dimension 16)
-    let latent_spaces: Array2<f32> = Array2::zeros((256, 16));
-    if f16 {}
+    let latent_spaces: Array2<f32> = Array2::zeros((input_size, latent_dim_size));
 
     let load_time = start.elapsed();
 
-    // Iterate through each latent space (256 vectors of dimension 16)
     for latent_vector in latent_spaces.axis_iter(ndarray::Axis(0)) {
         let input_tensor = latent_vector.insert_axis(ndarray::Axis(0)); // Create a 1x16 tensor
 
@@ -115,14 +113,14 @@ pub fn denoise_images(
         .commit_from_file(model_path)?;
     let load_time = start.elapsed();
 
-    for _ in 0..256 {
+    for _ in 0..16 {
         // Example image
-        let input_image: Array2<f32> = Array2::zeros((256, 256));
+        let input_image: Array4<f32> = Array4::zeros((1, 3, 256, 256));
 
         // Perform inference to denoise the image
         let start = Instant::now();
-        let outputs = model.run(ort::inputs!["image" => input_image]?)?;
-        let _predictions = outputs["output0"].try_extract_tensor::<f32>()?;
+        let outputs = model.run(ort::inputs!["input" => input_image]?)?;
+        let _predictions = outputs["output"].try_extract_tensor::<f32>()?;
         let inference_time = start.elapsed();
         latencies.push((PathBuf::new(), load_time, inference_time));
     }
