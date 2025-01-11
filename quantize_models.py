@@ -2,7 +2,6 @@ import numpy as np
 import torch
 from AEDataset import AEDecoderDataset, init_ae_dataset
 from Autoencoder import Autoencoder
-from Autoencoder_quant import QuantizedAutoencoder
 from config import DATASET_REPO, DATASET_SPLIT, ENC_IO_SIZE
 import torch.nn as nn
 import os

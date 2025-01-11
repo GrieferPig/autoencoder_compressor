@@ -1,4 +1,50 @@
+import torch
 import torch.nn as nn
+
+
+class ResidualBlock(nn.Module):
+    """
+    A simple residual block with a convolutional layer and ReLU activation.
+    Includes logic to handle mismatched spatial dimensions for residual connections.
+    """
+
+    def __init__(self, in_channels, out_channels, stride, transpose=False):
+        super(ResidualBlock, self).__init__()
+        self.conv = (
+            nn.ConvTranspose2d(
+                in_channels, out_channels, kernel_size=4, stride=stride, padding=1
+            )
+            if transpose
+            else nn.Conv2d(
+                in_channels, out_channels, kernel_size=4, stride=stride, padding=1
+            )
+        )
+        self.activation = nn.ReLU(inplace=True)
+
+        # If input and output channels differ, or spatial sizes change, adjust with a 1x1 convolution
+        self.residual = (
+            nn.ConvTranspose2d(in_channels, out_channels, kernel_size=1, stride=1)
+            if transpose and (in_channels != out_channels or stride != 1)
+            else (
+                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1)
+                if in_channels != out_channels or stride != 1
+                else nn.Identity()
+            )
+        )
+
+    def forward(self, x):
+        identity = self.residual(x)  # Adjust residual if needed
+        out = self.conv(x)
+        out = self.activation(out)
+
+        # Match spatial dimensions if they are different
+        if identity.size() != out.size():
+            # Use interpolation to match the spatial size
+            identity = nn.functional.interpolate(
+                identity, size=out.size()[2:], mode="nearest"
+            )
+
+        return out + identity
 
 
 class Autoencoder(nn.Module):
@@ -30,21 +76,18 @@ class Autoencoder(nn.Module):
         ), "Image size must be divisible by 2^num_layers"
         final_size = image_size // (2**num_layers)
 
-        # Encoder
+        # Encoder with residual connections
         encoder_layers = []
         channels = 32  # Starting number of channels
         current_channels = input_channels
         for _ in range(num_layers):
             encoder_layers.append(
-                nn.Conv2d(
+                ResidualBlock(
                     in_channels=current_channels,
                     out_channels=channels,
-                    kernel_size=4,
                     stride=2,
-                    padding=1,
                 )
             )
-            encoder_layers.append(nn.ReLU(inplace=True))
             current_channels = channels
             channels = channels * 2  # Double the number of channels each layer
 
@@ -54,7 +97,7 @@ class Autoencoder(nn.Module):
         )
         self.encoder = nn.Sequential(*encoder_layers)
 
-        # Decoder
+        # Decoder with residual connections
         decoder_layers = []
         decoder_layers.append(
             nn.Linear(latent_dim, current_channels * final_size * final_size)
@@ -69,15 +112,13 @@ class Autoencoder(nn.Module):
         for _ in range(num_layers - 1):
             channels = current_channels // 2  # Halve the number of channels each layer
             decoder_layers.append(
-                nn.ConvTranspose2d(
+                ResidualBlock(
                     in_channels=current_channels,
                     out_channels=channels,
-                    kernel_size=4,
                     stride=2,
-                    padding=1,
+                    transpose=True,
                 )
             )
-            decoder_layers.append(nn.ReLU(inplace=True))
             current_channels = channels
 
         # Final layer to get back to output channels
