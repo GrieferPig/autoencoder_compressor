@@ -41,9 +41,7 @@ def main():
 
     # load denoiser
     denoiser = DenoisingModel()
-    denoiser.load_state_dict(
-        torch.load("./dncnn_final.pth", map_location=DEVICE)["model_state_dict"]
-    )
+    denoiser.load_state_dict(torch.load("./dncnn_final.pth", map_location=DEVICE))
     denoiser = denoiser.to(DEVICE)
     denoiser.eval()
 
@@ -85,8 +83,7 @@ def main():
             # Convert compressed image back to tensor
             recon, _ = model(img_tensor.unsqueeze(0).to(DEVICE))
             recon = recon.clamp(0, 1)
-            residual = denoiser(recon)
-            recon = torch.clamp(recon - residual, 0, 1)
+            recon = denoiser(recon).clamp(0, 1)
             recon_cpu = recon.squeeze(0).cpu()
 
             # Save reconstructed image

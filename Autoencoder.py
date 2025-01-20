@@ -3,16 +3,20 @@ import torch.nn as nn
 
 
 class ResidualBlock(nn.Module):
-    """
-    A simple residual block with a convolutional layer and ReLU activation.
-    Includes logic to handle mismatched spatial dimensions for residual connections.
-    """
-
     def __init__(self, in_channels, out_channels, stride, transpose=False):
         super(ResidualBlock, self).__init__()
+        self.transpose = transpose
+        self.stride = stride
+
+        # Main convolutional layer
         self.conv = (
             nn.ConvTranspose2d(
-                in_channels, out_channels, kernel_size=4, stride=stride, padding=1
+                in_channels,
+                out_channels,
+                kernel_size=4,
+                stride=stride,
+                padding=1,
+                output_padding=0,
             )
             if transpose
             else nn.Conv2d(
@@ -21,30 +25,38 @@ class ResidualBlock(nn.Module):
         )
         self.activation = nn.ReLU(inplace=True)
 
-        # If input and output channels differ, or spatial sizes change, adjust with a 1x1 convolution
-        self.residual = (
-            nn.ConvTranspose2d(in_channels, out_channels, kernel_size=1, stride=1)
-            if transpose and (in_channels != out_channels or stride != 1)
-            else (
-                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1)
-                if in_channels != out_channels or stride != 1
-                else nn.Identity()
-            )
-        )
+        # Adjust residual connection to match spatial dimensions and channels
+        if transpose:
+            if in_channels != out_channels or stride != 1:
+                # Calculate appropriate output_padding
+                # Typically, output_padding=1 when stride=2 to align dimensions
+                output_padding = stride - 1 if stride > 1 else 0
+                self.residual = nn.ConvTranspose2d(
+                    in_channels,
+                    out_channels,
+                    kernel_size=1,
+                    stride=stride,
+                    padding=0,
+                    output_padding=output_padding,
+                )
+            else:
+                self.residual = nn.Identity()
+        else:
+            if in_channels != out_channels or stride != 1:
+                self.residual = nn.Conv2d(
+                    in_channels, out_channels, kernel_size=1, stride=stride, padding=0
+                )
+            else:
+                self.residual = nn.Identity()
+
+        self.skip_add = nn.quantized.FloatFunctional()
 
     def forward(self, x):
         identity = self.residual(x)  # Adjust residual if needed
         out = self.conv(x)
         out = self.activation(out)
 
-        # Match spatial dimensions if they are different
-        if identity.size() != out.size():
-            # Use interpolation to match the spatial size
-            identity = nn.functional.interpolate(
-                identity, size=out.size()[2:], mode="nearest"
-            )
-
-        return out + identity
+        return self.skip_add.add(out, identity)
 
 
 class Autoencoder(nn.Module):
@@ -56,24 +68,12 @@ class Autoencoder(nn.Module):
         num_layers=3,
         latent_dim=256,
     ):
-        """
-        Initializes the Autoencoder.
-
-        Parameters:
-        - input_channels (int): Number of channels in the input images.
-        - output_channels (int): Number of channels in the output images.
-        - image_size (int): Height and width of the input images (assumes square images).
-        - num_layers (int): Number of convolutional layers in the encoder and decoder.
-        - latent_dim (int): Dimension of the latent space.
-        """
         super(Autoencoder, self).__init__()
         self.latent_dim = latent_dim
         self.num_layers = num_layers
 
         # Calculate the size after downsampling
-        assert (
-            image_size % (2**num_layers) == 0
-        ), "Image size must be divisible by 2^num_layers"
+        assert image_size % (2**num_layers) == 0, "non integer downsampling"
         final_size = image_size // (2**num_layers)
 
         # Encoder with residual connections
@@ -136,42 +136,16 @@ class Autoencoder(nn.Module):
         self.decoder = nn.Sequential(*decoder_layers)
 
     def encode(self, x):
-        """
-        Encodes the input into the latent space.
 
-        Parameters:
-        - x (torch.Tensor): Input tensor of shape (batch_size, input_channels, height, width).
-
-        Returns:
-        - latent (torch.Tensor): Latent representation of shape (batch_size, latent_dim).
-        """
         latent = self.encoder(x)
         return latent
 
     def decode(self, latent):
-        """
-        Decodes the latent representation back to the original input space.
 
-        Parameters:
-        - latent (torch.Tensor): Latent representation of shape (batch_size, latent_dim).
-
-        Returns:
-        - reconstructed (torch.Tensor): Reconstructed tensor of shape (batch_size, output_channels, height, width).
-        """
         reconstructed = self.decoder(latent)
         return reconstructed
 
     def forward(self, x):
-        """
-        Forward pass of the Autoencoder.
-
-        Parameters:
-        - x (torch.Tensor): Input tensor of shape (batch_size, input_channels, height, width).
-
-        Returns:
-        - reconstructed (torch.Tensor): Reconstructed tensor of shape (batch_size, output_channels, height, width).
-        - latent (torch.Tensor): Latent representation of shape (batch_size, latent_dim).
-        """
         latent = self.encode(x)
         reconstructed = self.decode(latent)
         return reconstructed, latent

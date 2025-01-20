@@ -79,7 +79,12 @@ class AEDataset(torch.utils.data.Dataset):
 
 
 def init_ae_dataset(
-    dataset, length=None, indices=None, shuffle=True, process_on_demand=False
+    dataset,
+    length=None,
+    indices=None,
+    shuffle=True,
+    process_on_demand=False,
+    batch_size=BATCH_SIZE_AE_DATA,
 ):
     if isinstance(indices, str):
         # split the string into a list of integers
@@ -103,7 +108,7 @@ def init_ae_dataset(
             process_on_demand=process_on_demand,
         )
     dataloader = torch.utils.data.DataLoader(
-        custom_dataset, batch_size=BATCH_SIZE_AE_DATA, shuffle=False
+        custom_dataset, batch_size=batch_size, shuffle=False
     )
     return custom_dataset, dataloader
 
@@ -202,7 +207,6 @@ class AEDecoderDataset(torch.utils.data.Dataset):
         with torch.no_grad():
             image = image.to(self.device)
             embedding = model.encoder(image)
-            print(embedding.shape)
         return embedding
 
     def __len__(self):

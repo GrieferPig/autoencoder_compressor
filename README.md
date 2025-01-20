@@ -1,3 +1,3 @@
 # autoencoder image compressor
 
-fuck my cs ee
+frick my cs ee
